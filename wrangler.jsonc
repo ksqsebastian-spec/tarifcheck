@@ -29,7 +29,7 @@
     {
       "binding": "DB",
       "database_name": "tarifcheck",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "c828eed8-fd67-4dfa-a196-6ed3fec8d640",
       "migrations_dir": "migrations"
     }
   ],
@@ -49,7 +49,7 @@
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",
-      "id": "00000000000000000000000000000000"
+      "id": "58c20a25b82b4b3bace3ba4e0eb95ddf"
     }
   ],
 

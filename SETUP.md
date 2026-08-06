@@ -13,25 +13,33 @@ npx wrangler login
 
 ## 1. Speicher, Datenbank, KV
 
+**Datenbank und KV sind bereits angelegt**, die IDs stehen in `wrangler.jsonc`:
+
+| | |
+|---|---|
+| D1 `tarifcheck` | `c828eed8-fd67-4dfa-a196-6ed3fec8d640` (Region WEUR) |
+| KV `tarifcheck-OAUTH_KV` | `58c20a25b82b4b3bace3ba4e0eb95ddf` |
+
+Das Schema liegt schon auf der Datenbank, `npm run migrate` läuft also als No-op durch.
+
+**R2 fehlt noch und muss von dir freigeschaltet werden.** Die API lehnt das Anlegen mit
+*„Please enable R2 through the Cloudflare Dashboard"* ab — R2 ist einmalig pro Konto zu
+aktivieren, und dafür verlangt Cloudflare eine hinterlegte Zahlungsmethode, auch wenn der
+kostenlose Rahmen (10 GB) hier bei weitem reicht.
+
+1. Im Dashboard auf **R2 → Get started / Purchase R2** und die Aktivierung bestätigen
+2. Dann:
+
 ```bash
 npx wrangler r2 bucket create tarifcheck
-npx wrangler d1 create tarifcheck
-npx wrangler kv namespace create OAUTH_KV
 ```
 
-Die drei Befehle geben je eine ID aus. Diese in `wrangler.jsonc` eintragen, dort stehen
-noch Platzhalter:
+Der Bucket wird über den Namen angesprochen, es ist nichts einzutragen.
 
-- `d1_databases[0].database_id`
-- `kv_namespaces[0].id`
-
-(Der R2-Bucket wird über den Namen angesprochen, dort ist nichts einzutragen.)
-
-## 2. Schema und Quellen
+## 2. Quellen einspielen
 
 ```bash
-npm run migrate     # Tabellen anlegen
-npm run seed        # data/tarif-quellen.tsv einspielen
+npm run seed        # data/tarif-quellen.tsv in die Datenbank
 ```
 
 `seed` ist mehrfach ausführbar. Es zieht geänderte Adressen und Titel nach und lässt
