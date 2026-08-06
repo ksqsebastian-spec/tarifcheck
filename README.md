@@ -13,6 +13,7 @@ Nachfolger von `tarif-sync.sh` — ohne Rechner, der durchlaufen muss.
 | Was gebaut wird und warum | [`PLAN.md`](PLAN.md) |
 | Einrichten und betreiben | [`SETUP.md`](SETUP.md) |
 | Wie die Daten liegen | [`DATENMODELL.md`](DATENMODELL.md) |
+| In den MCP-Hub aufnehmen | [`HUB-EINTRAG.md`](HUB-EINTRAG.md) |
 
 ## Kurz
 

@@ -3,7 +3,7 @@ import { apiRouten } from "./api/routen";
 import { accessRouten } from "./auth/access";
 import { fehler, json } from "./lib/antwort";
 import type { Env } from "./lib/typen";
-import { mcpHandler } from "./mcp/server";
+import { mcpHandler, toolsJson } from "./mcp/server";
 import { INTERN_KOPF, alleQuellenAnstossen } from "./sync/cron";
 import { quelleAbrufen } from "./sync/quelle";
 
@@ -18,6 +18,10 @@ import { quelleAbrufen } from "./sync/quelle";
 const seitenHandler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    // Katalog fuer den MCP-Hub. Ohne Anmeldung, enthaelt nur Tool-Namen und
+    // -Beschreibungen. Muss offen sein, damit der Hub ihn holen kann.
+    if (url.pathname === "/tools.json") return toolsJson(env, ctx);
 
     // Anmeldung des MCP: /authorize, /callback, /callback/bestaetigen
     const anmeldung = await accessRouten(request, env as never, url);

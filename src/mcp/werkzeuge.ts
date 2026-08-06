@@ -11,6 +11,16 @@ const MAX_ZEICHEN = 80_000;
 
 const GEWERKE = ["BAU", "GERUESTBAU", "MALER", "TISCHLER", "UEBERGREIFEND"] as const;
 
+/**
+ * Alle Werkzeuge lesen nur. Geschrieben wird ausschliesslich ueber die Seite.
+ *
+ * Die Kennzeichnung ist nicht bloss Deko: der MCP-Hub teilt die Tool-Liste
+ * danach in "lesend" und "schreibend". Ohne sie stuenden alle sechs unter
+ * schreibend - bei einem reinen Lesedienst eine Falschaussage an genau der
+ * Stelle, an der jemand nachsieht, was der Server anrichten kann.
+ */
+const NUR_LESEN = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+
 const text = (s: string) => ({ content: [{ type: "text" as const, text: s }] });
 const alsJson = (d: unknown) => text(JSON.stringify(d, null, 2));
 
@@ -85,6 +95,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         "Listet alle Gewerke mit Anzahl der Dokumente und dem Datum der letzten Prüfung. " +
         "Guter erster Aufruf, um zu sehen, was überhaupt da ist.",
       inputSchema: z.object({}),
+      annotations: NUR_LESEN,
     },
     async () => {
       const { results } = await env.DB.prepare(
@@ -109,6 +120,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
       inputSchema: z.object({
         gewerk: z.enum(GEWERKE).optional().describe("Auf ein Gewerk einschränken"),
       }),
+      annotations: NUR_LESEN,
     },
     async ({ gewerk }) => {
       const sql = `
@@ -152,6 +164,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
           .optional()
           .describe("Ältere Fassung lesen; ohne Angabe die aktuelle"),
       }),
+      annotations: NUR_LESEN,
     },
     async ({ id, version_id }) => {
       const d = await env.DB.prepare(
@@ -234,6 +247,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
           .default(90)
           .describe("Zeitraum rückwärts in Tagen"),
       }),
+      annotations: NUR_LESEN,
     },
     async ({ gewerk, seit_tagen }) => {
       const seit = new Date(Date.now() - seit_tagen * 86400_000).toISOString();
@@ -284,6 +298,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         suche: z.string().min(2).describe("Stichwörter, z. B. Urlaubsgeld Maler"),
         gewerk: z.enum(GEWERKE).optional(),
       }),
+      annotations: NUR_LESEN,
     },
     async ({ suche, gewerk }) => {
       const ausdruck = ftsAusdruck(suche);
@@ -342,6 +357,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         "Alle je erfassten Fassungen eines Dokuments. Mit der version_id lässt sich " +
         "über dokument_lesen eine ältere Fassung öffnen.",
       inputSchema: z.object({ id: z.string().describe("Dokument-ID") }),
+      annotations: NUR_LESEN,
     },
     async ({ id }) => {
       const { results } = await env.DB.prepare(
