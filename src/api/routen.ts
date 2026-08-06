@@ -14,6 +14,7 @@ import { meldungAnlegen, volltextSetzen } from "../lib/db";
 import { rohSchluessel, textSchluessel, textSpeichern } from "../lib/speicher";
 import type { Env } from "../lib/typen";
 import { alleQuellenAnstossen } from "../sync/cron";
+import { datumsFunde } from "../sync/datum";
 import { nachMarkdown } from "../sync/markdown";
 import { pdfNachText, textAusbeute, textBrauchbar } from "../sync/text";
 import { jetzt, stempel } from "../lib/zeit";
@@ -117,7 +118,7 @@ async function dokumente(env: Env, url: URL): Promise<Response> {
   const gewerk = url.searchParams.get("gewerk");
   const abfrage = `
     SELECT d.*, q.url AS quelle_url, q.typ AS quelle_typ, v.erfasst_am AS stand,
-           v.bytes AS stand_bytes, v.text_zeichen, v.text_brauchbar
+           v.bytes AS stand_bytes, v.text_zeichen, v.text_brauchbar, v.datum_funde
       FROM dokumente d
       LEFT JOIN quellen  q ON q.id = d.quelle_id
       LEFT JOIN versionen v ON v.id = d.aktuelle_version_id
@@ -269,11 +270,12 @@ async function hochladen(env: Env, request: Request): Promise<Response> {
     env.DB.prepare(
       `INSERT INTO versionen
          (id, dokument_id, erfasst_am, r2_raw_key, r2_md_key, bytes, etag,
-          hochgeladen_von, text_zeichen, text_brauchbar)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          hochgeladen_von, text_zeichen, text_brauchbar, datum_funde)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(versionId, dokumentId, jetzt(), rawKey, mdKey, objekt.size, objekt.etag, wer,
            textAusbeute(markdown),
-           textBrauchbar(textAusbeute(markdown), objekt.size, true) ? 1 : 0),
+           textBrauchbar(textAusbeute(markdown), objekt.size, true) ? 1 : 0,
+           JSON.stringify(datumsFunde(markdown))),
     env.DB.prepare(
       `UPDATE dokumente
           SET aktuelle_version_id = ?, letzte_pruefung = ?, letzter_status = 'ok',

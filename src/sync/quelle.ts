@@ -16,6 +16,7 @@ import {
 import type { Dokument, Env, SyncErgebnis, Version } from "../lib/typen";
 import { jetzt, stempel } from "../lib/zeit";
 import { nachMarkdown, pdfLinks } from "./markdown";
+import { datumsFunde } from "./datum";
 import { pdfNachText, textAusbeute, textBrauchbar } from "./text";
 
 /**
@@ -62,6 +63,7 @@ async function versionAnlegen(
     etag: string;
     textZeichen: number;
     textBrauchbar: boolean;
+    datumFunde: string | null;
     httpEtag: string | null;
     httpLastModified: string | null;
     quelleUrl: string;
@@ -72,8 +74,9 @@ async function versionAnlegen(
     env.DB.prepare(
       `INSERT INTO versionen
          (id, dokument_id, erfasst_am, r2_raw_key, r2_md_key, bytes, etag,
-          http_etag, http_last_modified, quelle_url, text_zeichen, text_brauchbar)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          http_etag, http_last_modified, quelle_url, text_zeichen, text_brauchbar,
+          datum_funde)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       versionId,
       dokument.id,
@@ -87,6 +90,7 @@ async function versionAnlegen(
       daten.quelleUrl,
       daten.textZeichen,
       daten.textBrauchbar ? 1 : 0,
+      daten.datumFunde,
     ),
     env.DB.prepare("UPDATE dokumente SET aktuelle_version_id = ? WHERE id = ?").bind(
       versionId,
@@ -224,6 +228,7 @@ async function dateiHolen(
     quelleUrl: quelle.url,
     textZeichen: ausbeute,
     textBrauchbar: brauchbar,
+    datumFunde: JSON.stringify(datumsFunde(markdown)),
   });
 
   await volltextSetzen(env, dokument, markdown);
@@ -316,6 +321,9 @@ async function seiteBeobachten(
     quelleUrl: quelle.url,
     textZeichen: textAusbeute(markdown),
     textBrauchbar: textBrauchbar(textAusbeute(markdown), bytes, false),
+    // Bei beobachteten Seiten waeren Datumsangaben die der verlinkten
+    // Dokumente, nicht die der Seite. Das waere irrefuehrend.
+    datumFunde: null,
   });
 
   await volltextSetzen(env, dokument, markdown);

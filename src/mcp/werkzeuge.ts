@@ -78,12 +78,53 @@ function vorbehalte(d: any): string[] {
         "vor, ist aber vermutlich ein Scan ohne Texterkennung. Es gibt hier KEINEN " +
         "Inhalt wiederzugeben. Nicht raten, sondern auf die Quelle verweisen.",
     );
-  if (!d.gueltig_ab)
+  // Der Vorbehalt nur, wenn wirklich nichts vorliegt. Frueher stand er bei
+  // jedem einzelnen Treffer - und ein Hinweis, der immer dasteht, wird
+  // ueberlesen. Er war Rauschen statt Warnung.
+  if (!d.gueltig_ab && !datumFunde(d).length)
     v.push(
-      "Kein Gültigkeitsdatum hinterlegt. Es wird bewusst nicht aus dem Dokument " +
-        "geraten — bitte im Text selbst nachsehen.",
+      "Kein Gültigkeitsdatum hinterlegt, und im Text ließ sich keins finden. " +
+        "Bitte im Dokument selbst nachsehen.",
     );
   return v;
+}
+
+const ARTNAME: Record<string, string> = {
+  inkrafttreten: "tritt in Kraft am",
+  ausserkrafttreten: "tritt außer Kraft am",
+  fassung: "Fassung vom",
+  geltung: "gilt ab",
+};
+
+/**
+ * Datumsangaben, die woertlich im Dokument stehen.
+ *
+ * Ausdruecklich Zitate, keine gepflegten Angaben: sie ersetzen `gueltig_ab`
+ * nicht, sondern geben dem Leser das an die Hand, was im Text steht.
+ */
+function datumFunde(d: any): Array<{ bedeutung: string; datum: string; fundstelle: string }> {
+  if (!d.datum_funde) return [];
+  try {
+    return (JSON.parse(d.datum_funde) as any[]).map((f) => ({
+      bedeutung: ARTNAME[f.art] ?? f.art,
+      datum: f.datum,
+      fundstelle: f.fundstelle,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Alles zum Stand eines Dokuments an einer Stelle. */
+function datumsangaben(d: any) {
+  const funde = datumFunde(d);
+  if (!funde.length) return {};
+  return {
+    datum_im_text: funde,
+    datum_hinweis:
+      "Wörtlich aus dem Dokument entnommen, nicht redaktionell geprüft. " +
+      "Beim Nennen einer Zahl bitte mit angeben, worauf sie sich stützt.",
+  };
 }
 
 export function werkzeugeAnmelden(server: McpServer, env: Env): void {
@@ -127,7 +168,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         SELECT d.id, d.titel, d.kuerzel, d.gewerk, d.herkunft, d.gueltig_ab, d.hinweis,
                d.letzter_status, d.letzter_fehler, d.letzte_pruefung,
                v.erfasst_am AS stand, v.text_zeichen, v.text_brauchbar,
-               q.url AS quelle_url, q.typ AS quelle_typ,
+               v.datum_funde, q.url AS quelle_url, q.typ AS quelle_typ,
                (d.aktuelle_version_id IS NOT NULL AND COALESCE(v.text_brauchbar, 0) = 1)
                  AS hat_inhalt
           FROM dokumente d
@@ -144,6 +185,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         dokumente: results.map((d: any) => ({
           ...d,
           hat_inhalt: !!d.hat_inhalt,
+          ...datumsangaben(d),
           vorbehalte: vorbehalte(d),
         })),
       });
@@ -199,6 +241,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
       if (!objekt) return text("Der Text ist im Speicher nicht auffindbar.");
 
       d.text_brauchbar = v.text_brauchbar;
+      d.datum_funde = v.datum_funde;
 
       let inhalt = await objekt.text();
       let gekuerzt = false;
@@ -212,6 +255,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         gewerk: d.gewerk,
         stand: v.erfasst_am,
         gueltig_ab: d.gueltig_ab,
+        ...datumsangaben(d),
         herkunft: d.herkunft,
         quelle: d.quelle_url,
         hochgeladen_von: v.hochgeladen_von,
@@ -343,6 +387,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         treffer: results.map((r) => ({
           ...r,
           gueltig_ab: nach.get(r.dokument_id)?.gueltig_ab ?? null,
+          ...datumsangaben(nach.get(r.dokument_id) ?? {}),
           vorbehalte: vorbehalte(nach.get(r.dokument_id) ?? {}),
         })),
       });

@@ -15,6 +15,9 @@ Antwort — es entscheidet, ob eine Zahl überhaupt belastbar ist. Insbesondere:
   Downloadseite und KEIN Vertragstext. Niemals als Vertragsinhalt wiedergeben.
 - Beim Maler-Rahmentarifvertrag kursieren ältere Fassungen. Ohne Stand und
   Gültigkeitsdatum ist eine Zahl daraus wertlos — beides immer mitnennen.
+- "gueltig_ab" ist die gepflegte Angabe und meist leer. "datum_im_text" sind
+  Zitate aus dem Dokument selbst, samt Fundstelle — belastbarer als nichts,
+  aber ungeprüft. Beim Nennen dazusagen, worauf sich die Zahl stützt.
 
 Für gezielte Fragen tarife_durchsuchen benutzen, nicht ganze Verträge lesen.
 `.trim();
