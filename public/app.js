@@ -94,14 +94,13 @@ function melden(text, art = "") {
    Solange Access nicht eingerichtet ist, sind schreibende Zugriffe gesperrt —
    dann werden die entsprechenden Knöpfe gar nicht erst gezeigt, statt sie
    anzubieten und beim Druck mit einem Fehler zu antworten. */
-let darf = { schreiben: false, access_eingerichtet: false, angemeldet: null };
+let darf = { schreiben: false, anmeldung_eingerichtet: false, angemeldet: null };
 
 const gesperrtHinweis = () => darf.schreiben ? "" : `
   <div class="notiz rise" style="margin-bottom:18px">
-    <b>Nur Lesezugriff.</b> ${darf.access_eingerichtet
-      ? "Du bist an dieser Adresse nicht angemeldet."
-      : "Die Anmeldung über Cloudflare Access ist noch nicht eingerichtet."}
-    Hochladen, Quellen ändern und das Anstoßen einer Prüfung bleiben deshalb gesperrt.
+    <b>Nur Lesezugriff.</b> ${darf.anmeldung_eingerichtet
+      ? `Zum Hochladen, Quellen ändern und Prüfen bitte oben rechts anmelden.`
+      : "Die Anmeldung ist auf diesem Server noch nicht eingerichtet — siehe SETUP.md."}
     Der tägliche Abruf um 06:15 läuft davon unberührt weiter.
   </div>`;
 
@@ -115,7 +114,8 @@ async function zeige(name) {
     b.setAttribute("aria-selected", String(b.dataset.ansicht === name)));
   inhalt.innerHTML = `<p class="leer">Wird geladen …</p>`;
   try {
-    await { uebersicht, meldungen, dokumente, quellen, hochladen }[name]();
+    await { uebersicht, meldungen, dokumente, quellen, hochladen,
+            anmelden: () => anmeldemaske() }[name]();
   } catch (e) {
     inhalt.innerHTML = `<div class="karte"><p class="leer" style="padding:0">
       Konnte nicht geladen werden: ${esc(e.message)}</p></div>`;
@@ -309,12 +309,16 @@ async function hochladen() {
       <div class="abschnitt rise"><h2>Dokument hochladen</h2></div>
       ${gesperrtHinweis()}
       <div class="karte rise d1">
-        <p class="meta" style="max-width:56ch">
-          Sobald die Anmeldung steht, kannst du hier Verträge hochladen, für die es keine
-          öffentliche Quelle gibt — Tischlerhandwerk und den Lohn-Tarifvertrag Gerüstbau.
-          Die Einrichtung ist in <b>SETUP.md</b> beschrieben, Schritte 3 und 5.
+        <p class="meta" style="max-width:56ch;margin-bottom:16px">
+          Hier lädst du Verträge hoch, für die es keine öffentliche Quelle gibt —
+          Tischlerhandwerk und den Lohn-Tarifvertrag Gerüstbau.
         </p>
+        ${darf.anmeldung_eingerichtet
+          ? `<button class="knopf" id="jetzt-anmelden">Anmelden</button>`
+          : `<p class="meta">Die Anmeldung ist auf diesem Server noch nicht eingerichtet
+             — siehe <b>SETUP.md</b>.</p>`}
       </div>`;
+    $("#jetzt-anmelden")?.addEventListener("click", () => anmeldemaske("hochladen"));
     return;
   }
   inhalt.innerHTML = `
@@ -367,6 +371,55 @@ async function hochladen() {
   });
 }
 
+function anmeldemaske(zurueck = "uebersicht") {
+  inhalt.innerHTML = `
+    <div class="abschnitt rise"><h2>Anmelden</h2></div>
+    <div class="karte rise d1" style="max-width:440px">
+      <p class="meta" style="margin-bottom:18px">
+        Ein gemeinsames Konto für alle, die Verträge hochladen oder Quellen pflegen.
+        Lesen geht auch ohne.
+      </p>
+      <form id="login">
+        <label>Benutzername
+          <input class="feld" name="benutzer" autocomplete="username" required autofocus></label>
+        <label>Passwort
+          <input class="feld" type="password" name="passwort" autocomplete="current-password" required></label>
+        <button class="knopf" type="submit" style="justify-self:start">Anmelden</button>
+      </form>
+    </div>`;
+
+  $("#login").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const knopf = form.querySelector("button");
+    knopf.disabled = true;
+    try {
+      const d = new FormData(form);
+      await hole("/api/anmelden", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ benutzer: d.get("benutzer"), passwort: d.get("passwort") }),
+      });
+      darf = await hole("/api/status");
+      knoepfeSetzen();
+      melden("Angemeldet.", "gut");
+      zeige(zurueck);
+    } catch (err) {
+      melden(err.message, "schlecht");
+      knopf.disabled = false;
+    }
+  });
+}
+
+function knoepfeSetzen() {
+  $("#pruefen").hidden = !darf.schreiben;
+  $("#abmelden").hidden = !darf.schreiben;
+  $("#anmelden").hidden = darf.schreiben || !darf.anmeldung_eingerichtet;
+  const w = $("#wer");
+  w.textContent = darf.angemeldet ?? "";
+  w.hidden = !darf.angemeldet;
+}
+
 function zaehlerSetzen(n) {
   const z = $("#zaehler");
   z.textContent = n;
@@ -379,6 +432,16 @@ document.querySelectorAll("nav button").forEach((b) =>
     if (b.dataset.ansicht === "dokumente" && aktuell !== "dokumente") filter = null;
     zeige(b.dataset.ansicht);
   }));
+
+$("#anmelden").addEventListener("click", () => anmeldemaske(aktuell === "anmelden" ? "uebersicht" : aktuell));
+
+$("#abmelden").addEventListener("click", async () => {
+  await fetch("/api/abmelden", { method: "POST" }).catch(() => {});
+  darf = await hole("/api/status").catch(() => darf);
+  knoepfeSetzen();
+  melden("Abgemeldet.", "gut");
+  zeige("uebersicht");
+});
 
 $("#pruefen").addEventListener("click", async (e) => {
   const k = e.currentTarget;
@@ -405,7 +468,7 @@ $("#pruefen").addEventListener("click", async (e) => {
 
 (async function start() {
   try { darf = await hole("/api/status"); } catch { /* Standard bleibt: nur lesen */ }
-  $("#pruefen").hidden = !darf.schreiben;
+  knoepfeSetzen();
   hole("/api/uebersicht").then((d) => zaehlerSetzen(d.ungelesen)).catch(() => {});
   zeige("uebersicht");
 })();

@@ -1,5 +1,15 @@
 import { fehler, json } from "../lib/antwort";
-import { angemeldeteAdresse } from "../auth/zugriff";
+import {
+  anmeldungErlaubt,
+  bremseLoesen,
+  fehlversuchZaehlen,
+  herkunft,
+  loescheKeks,
+  passwortStimmt,
+  setzeKeks,
+  sitzungAusstellen,
+  sitzungPruefen,
+} from "../auth/anmeldung";
 import { meldungAnlegen, volltextSetzen } from "../lib/db";
 import { rohSchluessel, textSchluessel, textSpeichern } from "../lib/speicher";
 import type { Env } from "../lib/typen";
@@ -9,12 +19,47 @@ import { pdfNachText, textAusbeute, textBrauchbar } from "../sync/text";
 import { jetzt, stempel } from "../lib/zeit";
 
 const abgelehnt = () =>
-  fehler(
-    "Nicht angemeldet. Schreibende Zugriffe verlangen ein gültiges Token von " +
-      "Cloudflare Access. Ist Access für diese Adresse noch nicht eingerichtet, " +
-      "bleibt hier absichtlich alles gesperrt — siehe SETUP.md, Schritt 5.",
-    403,
-  );
+  fehler("Nicht angemeldet. Bitte oben rechts anmelden.", 401);
+
+/**
+ * Anmeldung.
+ *
+ * Verglichen wird gegen einen PBKDF2-Hash, nicht gegen ein Klartextpasswort -
+ * wer die Secrets liest, hat damit noch kein Passwort. Fehlversuche werden je
+ * Herkunft gezaehlt: ein einzelnes gemeinsames Passwort haelt sonst keinem
+ * Durchprobieren stand.
+ */
+async function anmelden(env: Env, request: Request): Promise<Response> {
+  const ip = herkunft(request);
+  if (!(await anmeldungErlaubt(env, ip)))
+    return fehler("Zu viele Fehlversuche. Bitte in 15 Minuten erneut.", 429);
+
+  if (!env.LOGIN_BENUTZER || !env.LOGIN_HASH || !env.SITZUNGS_SCHLUESSEL)
+    return fehler("Die Anmeldung ist auf diesem Server noch nicht eingerichtet.", 503);
+
+  const koerper = await request
+    .json<{ benutzer?: string; passwort?: string }>()
+    .catch(() => ({}) as { benutzer?: string; passwort?: string });
+  const stimmt =
+    koerper.benutzer === env.LOGIN_BENUTZER &&
+    Boolean(koerper.passwort) &&
+    (await passwortStimmt(koerper.passwort!, env.LOGIN_HASH));
+
+  // Keine Unterscheidung zwischen falschem Namen und falschem Passwort -
+  // sonst verraet die Meldung, welcher Teil schon stimmt.
+  if (!stimmt) {
+    await fehlversuchZaehlen(env, ip);
+    return fehler("Benutzername oder Passwort stimmt nicht.", 401);
+  }
+
+  await bremseLoesen(env, ip);
+  return new Response(JSON.stringify({ ok: true, benutzer: koerper.benutzer }), {
+    headers: {
+      "content-type": "application/json",
+      "set-cookie": setzeKeks(await sitzungAusstellen(env, koerper.benutzer!)),
+    },
+  });
+}
 
 const slug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
@@ -159,7 +204,7 @@ async function hochladen(env: Env, request: Request): Promise<Response> {
   if (!gewerk) return fehler("Gewerk fehlt");
   if (!titel && !vorhandenesDokument) return fehler("Titel fehlt");
 
-  const wer = (await angemeldeteAdresse(request, env)) ?? "unbekannt";
+  const wer = (await sitzungPruefen(request, env)) ?? "unbekannt";
   const zeit = stempel();
 
   let dokumentId = vorhandenesDokument;
@@ -382,8 +427,26 @@ export async function apiRouten(
       ? Math.round((Date.now() - new Date(zuletzt).getTime()) / 3600_000)
       : null;
 
+    // Selbsttest der Bremse: mit einem eigenen Schluessel oefter zaehlen, als
+    // erlaubt ist. Wer eine Schutzmassnahme nicht prueft, hat sie nicht.
+    // Der erste Anlauf ueber KV sah funktionsfaehig aus und war es nicht.
+    let bremse = "fehler";
+    try {
+      // Eigener Schluessel je Aufruf, damit der Selbsttest niemanden aussperrt.
+      const punkt = env.BREMSE.get(env.BREMSE.idFromName(`selbsttest:${crypto.randomUUID()}`));
+      let durchgelassen = 0;
+      for (let i = 0; i < 13; i++) {
+        if (await punkt.offen(10, 60_000)) durchgelassen++;
+        await punkt.fehlversuch(60_000);
+      }
+      bremse = durchgelassen === 10 ? "ok" : `WIRKUNGSLOS (${durchgelassen}/13 durchgelassen)`;
+    } catch (e) {
+      bremse = `fehler: ${e instanceof Error ? e.message : String(e)}`;
+    }
+
     return json({
       selbstbindung,
+      bremse,
       cron: "15 6 * * * (UTC)",
       zuletzt_geprueft: zuletzt,
       stunden_seit_pruefung: stundenHer,
@@ -394,16 +457,23 @@ export async function apiRouten(
   }
 
   if (p === "/api/status" && m === "GET") {
-    const wer = await angemeldeteAdresse(request, env);
+    const wer = await sitzungPruefen(request, env);
     return json({
       angemeldet: wer,
       schreiben: Boolean(wer),
-      access_eingerichtet: Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD),
+      anmeldung_eingerichtet: Boolean(env.LOGIN_BENUTZER && env.LOGIN_HASH && env.SITZUNGS_SCHLUESSEL),
     });
   }
 
-  // Ab hier wird geschrieben. Ohne gueltiges Access-Token geht nichts.
-  const schreiben = await angemeldeteAdresse(request, env);
+  if (p === "/api/anmelden" && m === "POST") return anmelden(env, request);
+
+  if (p === "/api/abmelden" && m === "POST")
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "content-type": "application/json", "set-cookie": loescheKeks() },
+    });
+
+  // Ab hier wird geschrieben. Ohne gueltige Sitzung geht nichts.
+  const schreiben = await sitzungPruefen(request, env);
   if (!schreiben) return abgelehnt();
 
   if (p === "/api/meldungen/gelesen" && m === "POST") return meldungenGelesen(env, request);

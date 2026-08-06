@@ -45,6 +45,19 @@
     "binding": "AI"
   },
 
+  // Bremse gegen das Durchprobieren von Passwoertern.
+  //
+  // Als Durable Object, weil es die einzige stark konsistente Zaehlstelle hier
+  // ist. KV war eventual consistent und zaehlte zu spaet; der ratelimit-Binding
+  // zaehlt je Instanz statt je Standort und liess einzelne Anfragen durch.
+  // Beide sahen funktionsfaehig aus und waren es nicht.
+  "durable_objects": {
+    "bindings": [{ "name": "BREMSE", "class_name": "Bremse" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Bremse"] }
+  ],
+
   // Tokens und Grants des OAuth-Providers fuer den MCP.
   "kv_namespaces": [
     {

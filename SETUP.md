@@ -2,9 +2,9 @@
 
 **Die Seite läuft bereits:** <https://tarifcheck.ksqsebastian.workers.dev>
 
-Solange die Anmeldung fehlt, läuft sie im **Lesemodus**: die Seite sagt das oben in einem
-Hinweis und zeigt schreibende Knöpfe gar nicht erst an. Der tägliche Abruf um 06:15 UTC
-läuft davon unberührt.
+Wer nicht angemeldet ist, sieht die Seite im **Lesemodus**: ein Hinweis oben, schreibende
+Knöpfe werden gar nicht erst gezeigt. Der tägliche Abruf um 06:15 UTC läuft unabhängig
+von jeder Anmeldung.
 
 Alle 17 Verträge sind abgerufen und durchsuchbar, der tägliche Lauf ist auf 06:15 UTC
 gestellt. Was noch fehlt, ist die Anmeldung — Schritte 3 und 5. **Bis dahin sind alle
@@ -13,7 +13,10 @@ offen.
 
 Kosten: **Workers Paid, 5 $/Monat** fürs ganze Konto. Nötig, weil der Text mit pdf.js
 gewonnen wird — die Begründung steht in `PLAN.md`, Abschnitt 4. Alles Übrige (R2, D1, KV,
-Workers AI) liegt im kostenlosen Rahmen.
+Durable Objects, Workers AI) liegt im kostenlosen Rahmen.
+
+**Zugangsdaten:** Benutzer `gwerkler`. Das beim Einrichten gewählte Passwort stand in einem
+Chatverlauf — es sollte gewechselt werden, siehe Abschnitt 3.
 
 ```bash
 npm install
@@ -45,31 +48,45 @@ npm run seed        # data/tarif-quellen.tsv in die Datenbank
 `seed` ist mehrfach ausführbar. Es zieht geänderte Adressen und Titel nach und lässt
 bestehende Fassungen und Meldungen in Ruhe.
 
-## 3. Anmeldung für den MCP vorbereiten (Access für SaaS)
+## 3. Anmeldung
 
-Der MCP-Server stellt eigene Tokens aus, weil Claude sich per Dynamic Client Registration
-anmeldet — das kennt Access nicht. Access ist dahinter das Anmeldeverfahren.
+Die Seite hat eine eigene Anmeldung — kein Cloudflare Access, kein externer Anbieter.
+Ein gemeinsames Konto für alle, die hochladen oder Quellen pflegen. Lesen geht ohne.
 
-1. **Zero Trust → Access controls → Applications → Create new application → SaaS**
-2. Name z. B. `Tarifcheck MCP`, Protokoll **OIDC**
-3. **Redirect URL**: `https://tarifcheck.<konto>.workers.dev/callback`
-4. Notieren: **Client ID**, **Client Secret**, **Authorization endpoint**, **Token endpoint**
-5. Unter **Advanced settings** die **Refresh tokens** einschalten — sonst muss man sich in
-   Claude alle paar Stunden neu anmelden
-6. Policy anlegen, z. B. *Emails ending in* `@gruppenwerk.de`
+Bereits eingerichtet: Benutzer **gwerkler**. Das Passwort liegt als PBKDF2-Hash in den
+Secrets, nie im Klartext.
 
-Dann die Werte als Secrets setzen:
+**Passwort ändern:**
 
 ```bash
-npx wrangler secret put ACCESS_CLIENT_ID
-npx wrangler secret put ACCESS_CLIENT_SECRET
-npx wrangler secret put ACCESS_AUTHORIZATION_URL
-npx wrangler secret put ACCESS_TOKEN_URL
-npx wrangler secret put COOKIE_ENCRYPTION_KEY   # openssl rand -hex 32
+node -e "
+const c=require('crypto'), p=process.argv[1];
+const s=c.randomBytes(16), h=c.pbkdf2Sync(p,s,100000,32,'sha256');
+console.log('pbkdf2\$100000\$'+s.toString('base64url')+'\$'+h.toString('base64url'));
+" 'NEUES-PASSWORT' | npx wrangler secret put LOGIN_HASH
 ```
 
-`COOKIE_ENCRYPTION_KEY` signiert den Zustand, der während der Anmeldung durch den Browser
-des Nutzers läuft. Ohne ihn könnte jemand die Anfrage unterwegs umschreiben.
+Die 100.000 Runden sind die Obergrenze der Web-Crypto-Umsetzung in Workers — mehr lehnt
+sie mit *„iteration counts above 100000 are not supported"* ab.
+
+**Benutzername ändern:** `npx wrangler secret put LOGIN_BENUTZER`
+
+**Alle abmelden** (etwa nach einem Passwortwechsel): `npx wrangler secret put SITZUNGS_SCHLUESSEL`
+mit einem neuen Zufallswert — damit werden alle bestehenden Sitzungen ungültig.
+
+```bash
+openssl rand -hex 32 | npx wrangler secret put SITZUNGS_SCHLUESSEL
+```
+
+### Schutz gegen Durchprobieren
+
+Zehn Fehlversuche je Herkunftsadresse in 15 Minuten, danach 429. Gezählt werden nur
+Fehlversuche; eine erfolgreiche Anmeldung setzt den Zähler zurück, damit sich niemand am
+eigenen Limit aussperrt.
+
+Bewusst **kein** kontoweites Limit: das klingt gründlicher, öffnet aber eine Tür — wer
+genug Fehlversuche schickt, sperrte damit die Kollegen aus. Gegen verteiltes Raten
+schützt hier die Länge des Passworts, nicht die Bremse.
 
 ## 4. Veröffentlichen
 
@@ -77,72 +94,32 @@ des Nutzers läuft. Ohne ihn könnte jemand die Anfrage unterwegs umschreiben.
 npm run deploy
 ```
 
-**Die Seite ist jetzt offen im Netz.** Schritt 5 gehört direkt hinterher.
-
-## 5. Die Seite schützen (Access, selbst gehostet)
-
-1. **Zero Trust → Access controls → Applications → Create new application → Self-hosted**
-2. Domain: `tarifcheck.<konto>.workers.dev`
-3. Policy: *Emails ending in* `@gruppenwerk.de`
-4. Anmeldeverfahren: **One-time PIN** genügt — Code per Mail, sonst nichts einzurichten
-
-### Schreibende Zugriffe freischalten
-
-Die Seite prüft schreibende Zugriffe selbst, gegen das signierte Token von Access —
-nicht bloß gegen die Kopfzeile `cf-access-authenticated-user-email`. Die ließe sich
-nämlich einfach mitschicken, solange keine Access-Anwendung davorsteht.
-
-Dafür fehlen zwei Angaben. Beide stehen in der eben angelegten **self-hosted** Anwendung:
+## 5. Prüfen, ob es läuft
 
 ```bash
-npx wrangler secret put ACCESS_TEAM_DOMAIN   # z.B. gruppenwerk.cloudflareaccess.com
-npx wrangler secret put ACCESS_AUD           # "Application Audience (AUD) Tag"
+curl https://tarifcheck.ksqsebastian.workers.dev/api/gesundheit
 ```
 
-Den AUD-Tag findet man in der Anwendung unter **Overview**. Solange die beiden fehlen,
-bleibt jeder schreibende Zugriff mit 403 gesperrt — absichtlich: wer die Adresse einer
-Quelle ändern kann, bestimmt, was der Dienst morgen früh als Tarifvertrag ablegt.
+Die Antwort prüft mehr, als ob der Worker antwortet:
 
-### Wichtig: Bypass für die MCP-Pfade
-
-Claude ruft die Anmeldepfade auf, **bevor** irgendjemand angemeldet ist. Liegt der
-Access-Login davor, kann sich der Connector nie verbinden — die Anmeldung würde sich
-selbst blockieren.
-
-Also eine **zweite Access-Anwendung** anlegen, ebenfalls self-hosted, mit einer
-**Bypass**-Policy (*Everyone*) und diesen Pfaden:
-
-```
-tarifcheck.<konto>.workers.dev/mcp
-tarifcheck.<konto>.workers.dev/authorize
-tarifcheck.<konto>.workers.dev/callback
-tarifcheck.<konto>.workers.dev/token
-tarifcheck.<konto>.workers.dev/register
-tarifcheck.<konto>.workers.dev/.well-known
-```
-
-Pfadgenauere Anwendungen haben Vorrang vor der Anwendung auf der ganzen Domain.
-
-Das ist kein Loch: hinter `/mcp` steht die Token-Prüfung des OAuth-Providers, und
-`/authorize` leitet unmittelbar zur Access-Anmeldung weiter. Ungeschützt ist nur der Weg
-dorthin.
-
-### Warum der tägliche Abruf trotzdem durchkommt
-
-Er ruft sich über eine Selbstbindung auf, also am Netzwerk und damit auch an Access
-vorbei. Zusätzlich verlangt der interne Pfad eine Kopfzeile, die von außen nicht gesetzt
-werden kann.
+| Feld | Bedeutung |
+|---|---|
+| `selbstbindung` | Erreicht der tägliche Lauf seine Arbeitsschritte? Ist das kaputt, tut der Cron stillschweigend nichts. |
+| `bremse` | Sperrt die Anmeldebremse wirklich? Sie ist zweimal wirkungslos gewesen, ohne dass man es sah. |
+| `zuletzt_geprueft` | Wann zuletzt wirklich abgerufen wurde |
+| `lauf_ueberfaellig` | `true`, wenn seit über 36 Stunden nichts lief |
+| `durchsuchbar` | Wie viele der Dokumente Volltext haben |
 
 ## 6. In Claude einbinden
 
 **Einstellungen → Connectors → Connector hinzufügen**, URL:
 
 ```
-https://tarifcheck.<konto>.workers.dev/mcp
+https://tarifcheck.ksqsebastian.workers.dev/mcp
 ```
 
-Beim ersten Aufruf öffnet sich die Access-Anmeldung, danach eine Seite „Zugriff auf
-Tarifcheck erlauben?". Danach funktioniert:
+Beim ersten Aufruf öffnet sich eine Anmeldemaske mit derselben Benutzer/Passwort-Kombination
+wie die Seite, danach die Frage „Zugriff auf Tarifcheck erlauben?". Danach funktioniert:
 
 > was ist neu bei den Tischlern, nutz den MCP
 

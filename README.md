@@ -23,9 +23,10 @@ Volltext. Alle siebzehn Verträge sind durchsuchbar.
 Auf der Seite sieht man den Stand je Gewerk und bekommt Änderungen als Benachrichtigung.
 Dokumente ohne öffentliche Quelle lädt man dort von Hand hoch.
 
-Ein MCP-Server im selben Worker macht den Bestand für Claude nutzbar — angemeldet über
-Cloudflare Access. Danach beantwortet Claude Fragen wie „was ist neu bei den Tischlern"
-direkt aus den Verträgen, mit Stand und Gültigkeitsdatum dazu.
+Ein MCP-Server im selben Worker macht den Bestand für Claude nutzbar — angemeldet mit
+demselben Benutzer und Passwort wie die Seite. Danach beantwortet Claude Fragen wie
+„was ist neu bei den Tischlern" direkt aus den Verträgen, mit Stand und Gültigkeitsdatum
+dazu.
 
 ## Werkzeuge des MCP
 

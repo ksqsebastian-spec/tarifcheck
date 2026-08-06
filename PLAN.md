@@ -43,9 +43,14 @@ sichtbar. Das ist der Weg für Tischler und den Lohn-TV Gerüstbau, für die es 
 **Quellen pflegen.** Baut ein Betreiber seine Seite um, geht ein Link ins Leere. Der
 Fehler steht dann rot in der Übersicht und die Adresse lässt sich direkt korrigieren.
 
-**Anmeldung** über Cloudflare Access. Eine Regel, etwa „Mailadresse endet auf
-`@gruppenwerk.de`", schützt die ganze Seite. Das ist reine Konfiguration im
-Cloudflare-Konto, dafür ist in diesem Repo keine Zeile Code nötig.
+**Anmeldung** mit Benutzername und Passwort, ein gemeinsames Konto. Kein externer
+Anbieter: was der Worker prüft, steht im Worker. Das Passwort liegt als PBKDF2-Hash in den
+Secrets, nie im Klartext. Zehn Fehlversuche je Herkunft in 15 Minuten, dann gesperrt.
+
+Der erste Entwurf setzte auf Cloudflare Access. Das hätte einen Teil der Prüfung in eine
+Dashboard-Konfiguration verlagert, deren Fehlen man der Seite nicht ansieht — und es
+verlangte einen Bypass für die MCP-Pfade, also eine Ausnahme, die stillschweigend zu weit
+gefasst sein kann.
 
 ---
 
@@ -63,15 +68,14 @@ Ein Worker. Vorne die Seite, hinten der tägliche Abruf.
               └─ D1: dokumente, versionen,   │
                      meldungen               │
                                              │
-  Browser ─Access─▶ Seite (Assets + JSON)────┘
+  Browser ─Sitzung─▶ Seite (Assets + JSON)───┘
 
   Claude ─OAuth─▶ /mcp  ─▶ dieselbe D1 + dasselbe R2
 ```
 
-Der MCP-Endpunkt liegt im selben Worker, liest aber nur. Die Anmeldung ist eine andere
-als die der Seite: Claude meldet sich per Dynamic Client Registration an, das kennt
-Cloudflare Access nicht. Also stellt der Worker eigene Tokens aus und benutzt Access als
-Anmeldeverfahren dahinter.
+Der MCP-Endpunkt liegt im selben Worker, liest aber nur. Claude meldet sich per Dynamic
+Client Registration an; der Worker ist sein eigener Autorisierungsserver und fragt dabei
+dieselbe Benutzer/Passwort-Kombination ab wie die Seite.
 
 ### Bindings dieses Workers
 
@@ -82,9 +86,12 @@ Anmeldeverfahren dahinter.
 | `AI` | Workers AI | Umwandlung der beobachteten HTML-Seiten |
 | `ASSETS` | Static Assets | die Seite |
 | `OAUTH_KV` | KV | Tokens und Grants des MCP |
+| `BREMSE` | Durable Object | zählt Fehlversuche bei der Anmeldung |
 
-Keine Durable Objects und keine Queues: der MCP-Handler ist zustandslos, und Queues gibt
-es im kostenlosen Tarif nicht.
+Keine Queues. Das eine Durable Object zählt Anmeldeversuche — es ist die einzige stark
+konsistente Zählstelle in dieser Umgebung. KV zählte zu spät (eventual consistent), der
+`ratelimit`-Binding zählt je Instanz statt je Standort; beide sahen funktionsfähig aus und
+ließen jeden Versuch durch.
 
 ---
 
@@ -178,7 +185,7 @@ tarifcheck/
 │  ├─ index.ts                 Routing, OAuth-Provider, fetch + scheduled
 │  ├─ sync/                    Abruf, Textumwandlung
 │  ├─ api/                     JSON für die Seite
-│  ├─ auth/                    Anmeldung des MCP gegen Cloudflare Access
+│  ├─ auth/                    Anmeldung: Passwort, Sitzung, Bremse, OAuth
 │  ├─ mcp/                     MCP-Server und seine Werkzeuge
 │  └─ lib/                     Datenbank, Speicher, Hilfen
 └─ public/                     die Seite selbst

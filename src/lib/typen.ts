@@ -19,18 +19,15 @@ export interface Env {
   /** Tokens und Grants des OAuth-Providers. */
   OAUTH_KV: KVNamespace;
 
-  // Aus der Access-for-SaaS-App (OIDC). Als Secrets gesetzt, siehe SETUP.md.
-  ACCESS_CLIENT_ID: string;
-  ACCESS_CLIENT_SECRET: string;
-  ACCESS_AUTHORIZATION_URL: string;
-  ACCESS_TOKEN_URL: string;
-  /** Zufallswert, mit dem der Zustand ueber die Anmeldung hinweg signiert wird. */
-  COOKIE_ENCRYPTION_KEY: string;
+  /** Bremse gegen das Durchprobieren von Passwoertern. */
+  BREMSE: DurableObjectNamespace<import("../auth/bremse").Bremse>;
 
-  // Fuer die Pruefung schreibender Zugriffe gegen die selbst gehostete
-  // Access-Anwendung. Fehlen sie, sind schreibende Zugriffe gesperrt.
-  ACCESS_TEAM_DOMAIN?: string;   // z.B. gruppenwerk.cloudflareaccess.com
-  ACCESS_AUD?: string;           // Application Audience Tag der Anwendung
+  // Anmeldung. Als Secrets gesetzt, siehe SETUP.md.
+  LOGIN_BENUTZER?: string;
+  /** PBKDF2-Hash im Format pbkdf2$<runden>$<salz>$<hash>. Nie das Klartextpasswort. */
+  LOGIN_HASH?: string;
+  /** Zufallswert, mit dem Sitzungen und Anmeldevorgaenge signiert werden. */
+  SITZUNGS_SCHLUESSEL?: string;
 }
 
 export interface Quelle {
