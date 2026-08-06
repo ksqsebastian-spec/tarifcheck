@@ -1,358 +1,207 @@
 # Tarifcheck — Plan
 
-Tarifvertrags-Dashboard auf Cloudflare mit OAuth-MCP für Claude.
+Tarifvertrags-Seite auf Cloudflare. Hält die Tarifverträge aller Gruppenwerk-Gewerke
+automatisch aktuell, meldet Änderungen auf der Seite und legt alles so ab, dass ein
+separater MCP-Server es lesen kann.
+
+**Der MCP wird nicht hier gebaut.** Er kommt ins bestehende `mcpee`-Repo. Dieses Repo
+liefert die Daten und den Vertrag darüber — siehe `MCP-CONTRACT.md`.
 
 ---
 
 ## 1. Kontext
 
-Heute läuft die Tarifvertrags-Überwachung als `tarif-sync.sh` auf einem Rechner, der
-durchlaufen muss. Das Skript lädt PDFs, erkennt Änderungen per SHA-256 und schreibt ein
-`AENDERUNGEN.md`. Nachteile: es braucht eine laufende Maschine, die Ergebnisse liegen als
-PDF in einem Ordner, und niemand kann Claude fragen „was ist neu bei den Tischlern".
+Heute läuft die Überwachung als `tarif-sync.sh` auf einem Rechner, der durchlaufen muss.
+Das Skript lädt PDFs, erkennt Änderungen per Prüfsumme und schreibt ein `AENDERUNGEN.md`.
+Es braucht eine laufende Maschine, und niemand kann Claude fragen, was sich getan hat.
 
-Ziel ist ein Dienst, der
+Diese Seite ersetzt den Rechner. Sie holt die Verträge selbst, merkt sich jede Fassung,
+wandelt sie in Text um und zeigt Änderungen als Benachrichtigung an. Der Textbestand ist
+zugleich das, was der MCP später ausliest.
 
-1. alle Tarifquellen der Gruppenwerk-Gewerke **automatisch aktuell hält**,
-2. jedes Dokument zusätzlich als **Markdown** vorhält,
-3. diesen Bestand über einen **OAuth-MCP** an Claude anbindet, sodass
-   „hey, was ist neu bei Tischlern, nutz den MCP" direkt funktioniert,
-4. ein **Dashboard** bietet, auf dem man den Stand sieht und Dokumente
-   **manuell hoch- und runterladen** kann.
-
-Der letzte Punkt ist kein Komfort-Feature, sondern trägt den Kern des Problems:
-**Tischlerhandwerk hat keine öffentliche Volltextquelle.** Es gibt keine
-Allgemeinverbindlicherklärung, die Verträge liegen im Mitgliederbereich von Tischler Nord.
-Gleiches gilt für den Lohn-TV Gerüstbau. Für diese Gewerke kann das System nur die
-Downloadseite auf Änderungen überwachen und dann sagen: „hier musst du ran". Der manuelle
-Upload ist der Weg, wie das Dokument trotzdem in den Bestand und damit in den MCP kommt.
+Was die Seite bewusst **nicht** tut: Dokumente zum Herunterladen anbieten. Der Bestand
+liegt einfach da und wird über Claude genutzt. Wer das Original-PDF in der Hand braucht,
+holt es sich bei der Quelle — die URL steht auf der Seite.
 
 ---
 
-## 2. Architektur
+## 2. Was die Seite kann
 
-Ein einziger Worker, `assets` für das Dashboard, alles andere über Bindings.
+**Übersicht.** Pro Gewerk der aktuelle Stand: grün heißt geprüft und unverändert, gelb
+heißt es hat sich etwas getan, rot heißt der Abruf ist fehlgeschlagen.
+
+**Benachrichtigungen.** Die zentrale Ansicht. Jede Änderung, jeder Fehler und jeder Upload
+erzeugt einen Eintrag. Ungelesene stehen oben und werden im Reiter mitgezählt, damit man
+beim Reinschauen sofort sieht, ob etwas anliegt. Man kann sie einzeln oder alle auf
+gelesen setzen. Das ist das Gegenstück zum `AENDERUNGEN.md` von früher.
+
+**Hochladen.** Datei wählen, Gewerk und Titel dazu, fertig. Sie läuft durch dieselbe
+Text-Umwandlung wie die automatisch geholten und ist danach für den MCP gleichwertig
+sichtbar. Das ist der Weg für Tischler und den Lohn-TV Gerüstbau, für die es keine
+öffentliche Quelle gibt.
+
+**Quellen pflegen.** Baut ein Betreiber seine Seite um, geht ein Link ins Leere. Der
+Fehler steht dann rot in der Übersicht und die Adresse lässt sich direkt korrigieren.
+
+**Anmeldung** über Cloudflare Access. Eine Regel, etwa „Mailadresse endet auf
+`@gruppenwerk.de`", schützt die ganze Seite. Das ist reine Konfiguration im
+Cloudflare-Konto, dafür ist in diesem Repo keine Zeile Code nötig.
+
+---
+
+## 3. Aufbau
+
+Ein Worker. Vorne die Seite, hinten der tägliche Abruf.
 
 ```
-                         ┌──────────────── Cron (06:15 UTC) ────────────────┐
-                         │  fan-out: 1 Self-Request pro Quelle              │
-                         ▼                                                  │
-  Quelle (zoll.de, soka-bau, …) ──fetch──▶ Worker ──stream──▶ R2  raw/…pdf  │
-                                             │                              │
-                                             ├─ env.AI.toMarkdown() ──▶ R2  md/…md
-                                             └─ D1: documents, versions, events
-                                                                            │
-  Browser ──Cloudflare Access──▶ /  Dashboard (Assets + JSON-API)           │
-  Claude  ──OAuth (DCR)────────▶ /mcp  MCP-Server ──liest──▶ D1 + R2 ───────┘
+        ┌──────────── Cron 06:15 ────────────┐
+        │  ein Selbstaufruf je Quelle        │
+        ▼                                    │
+  Quelle ──▶ Worker ──▶ R2  raw/…pdf         │
+              │                              │
+              ├─ AI.toMarkdown() ─▶ R2 md/…md│
+              └─ D1: dokumente, versionen,   │
+                     meldungen               │
+                                             │
+  Browser ─Access─▶ Seite (Assets + JSON)────┘
+
+  ── später, aus dem mcpee-Repo ──
+  Claude ─OAuth─▶ MCP-Worker ─▶ dieselbe D1 + dasselbe R2
 ```
 
-**Warum ein Worker und nicht mehrere:** Dashboard, MCP und Sync teilen sich dieselbe
-Datenbank, dasselbe R2 und dieselbe Quellenliste. Getrennte Worker würden nur
-Service-Bindings und dreifache Deploys erzeugen, ohne etwas zu entkoppeln.
+Der MCP-Worker hängt sich per Binding an dieselbe Datenbank und denselben Bucket. Das
+geht innerhalb eines Cloudflare-Kontos direkt, ohne Schnittstelle und ohne Schlüssel
+dazwischen. Er liest nur.
 
-### Bindings
+### Bindings dieses Workers
 
 | Binding | Typ | Zweck |
 |---|---|---|
-| `R2` | R2 Bucket `tarifcheck` | Originaldateien (`raw/`) und Markdown (`md/`) |
-| `DB` | D1 `tarifcheck` | Quellen, Dokumente, Versionen, Ereignisse |
-| `OAUTH_KV` | KV | Token-/Grant-Store von `workers-oauth-provider` |
-| `AI` | Workers AI | `toMarkdown()` für PDF → Markdown |
-| `ASSETS` | Static Assets | Dashboard-Frontend |
+| `R2` | R2 Bucket `tarifcheck` | Originaldateien (`raw/`) und Text (`md/`) |
+| `DB` | D1 `tarifcheck` | Quellen, Dokumente, Versionen, Meldungen |
+| `AI` | Workers AI | `toMarkdown()` für die Textumwandlung |
+| `ASSETS` | Static Assets | die Seite |
 
-Bewusst **nicht** verwendet: Queues (nur Paid), Durable Objects (durch den stateless
-MCP-Handler nicht nötig), Workflows (Overkill für ~15 Quellen).
+Kein KV, keine Durable Objects, keine Queues — nichts davon wird ohne MCP hier gebraucht.
 
 ---
 
-## 3. Kostenrahmen — läuft auf Workers Free
+## 4. Kosten — läuft auf Workers Free
 
-Nachgeprüft, nicht geschätzt:
-
-| Limit | Free | Bedarf hier |
+| Grenze | Free | Bedarf |
 |---|---|---|
-| CPU-Zeit pro Invocation | **10 ms** | die einzige echte Hürde, siehe unten |
-| Externe Subrequests / Invocation | 50 | 1–3 pro Quelle bei Fan-out |
-| Subrequests an CF-Dienste (R2/D1/KV/AI) | 1.000 | unkritisch |
-| Requests / Tag | 100.000 | ~50 |
-| Cron Triggers / Account | 5 | 1 |
+| Rechenzeit je Durchlauf | **10 ms** | die einzige echte Hürde |
+| Externe Abrufe je Durchlauf | 50 | 1–3 pro Quelle |
+| Aufrufe an R2/D1/AI je Durchlauf | 1.000 | unkritisch |
+| Anfragen pro Tag | 100.000 | ~50 |
 | R2 Speicher | 10 GB | < 200 MB |
-| D1 | 5 GB | < 10 MB |
-| Workers AI | 10.000 Neuronen/Tag | nur bei echten Änderungen |
 
-**Die 10 ms CPU sind der ganze Trick.** Drei Regeln halten uns darunter:
+Die 10 ms Rechenzeit sind der ganze Trick. Drei Regeln halten uns darunter:
 
-1. **Fan-out statt Schleife.** Der Cron-Handler arbeitet die Quellen nicht selbst ab, er
-   feuert pro Quelle einen Self-Request auf `/internal/sync/:id`. Jede Quelle bekommt so
-   ihr eigenes frisches 10-ms-Budget. Nebeneffekt: eine kaputte Quelle reißt die anderen
-   nicht mit, und Retries sind pro Quelle möglich.
-2. **Nicht lokal hashen.** Änderungserkennung läuft in zwei Stufen: erst ein bedingter GET
-   mit `If-None-Match` / `If-Modified-Since` aus den gespeicherten Header-Werten — ein
-   `304` kostet praktisch null CPU. Wo der Server keine Validatoren schickt, wird die Datei
-   nach R2 geschrieben und der von R2 zurückgegebene **MD5-etag** mit dem der Vorversion
-   verglichen. Kein `crypto.subtle.digest` über mehrere MB im Worker.
-3. **Nicht im Sync-Pfad diffen.** Der Cron vermerkt nur *ob* sich etwas geändert hat. Der
-   eigentliche Markdown-Diff wird erst berechnet, wenn ihn jemand anfragt (Dashboard oder
-   MCP-Tool), und dann in D1 zwischengespeichert.
+1. **Jede Quelle einzeln.** Der Cron arbeitet die Quellen nicht der Reihe nach ab, sondern
+   ruft sich selbst einmal pro Quelle auf. Jede bekommt so ihr eigenes frisches Budget.
+   Nebeneffekt: eine kaputte Quelle reißt die anderen nicht mit.
+2. **Nichts selbst durchrechnen.** Änderungserkennung läuft über die Kopfzeilen des
+   Servers (`If-None-Match`, `If-Modified-Since`) — antwortet er „unverändert", kostet das
+   praktisch nichts. Wo er keine schickt, wird die Datei geschrieben und die Prüfsumme
+   verglichen, **die R2 von sich aus zurückgibt**. Große PDFs werden nie im Worker
+   durchgerechnet.
+3. **Der Download ist ein Durchreichen.** Der Datenstrom geht direkt von der Quelle nach
+   R2, ohne im Speicher zusammengebaut zu werden.
 
-Der Download selbst ist `R2.put(key, response.body)` — reines I/O-Durchreichen, kaum CPU.
-`toMarkdown()` ist ein Binding-Aufruf, die Arbeit passiert außerhalb unseres CPU-Budgets.
+Falls es doch reißt: eine Zeile `limits.cpu_ms` in `wrangler.jsonc`, das setzt Workers
+Paid voraus (5 $/Monat). Die Zeile liegt auskommentiert bei.
 
-**Falls es doch reißt:** `limits.cpu_ms` in `wrangler.jsonc` hochsetzen. Das setzt Workers
-Paid (5 $/Monat) voraus — ist aber eine Zeile, kein Umbau. Ich lege die Zeile
-auskommentiert mit ins Repo.
-
-Ein Restrisiko bleibt ehrlich benannt: die Neuronen-Kosten von `toMarkdown()` für PDFs sind
-in der Preisliste nicht separat ausgewiesen (AI-Modelle kommen dort nur für
-Bildbeschreibungen zum Einsatz). Bei ~14 Dokumenten, die sich selten ändern, erwarte ich
-das unkritisch — den Zähler im AI-Dashboard sollte man in der ersten Woche trotzdem
-anschauen.
+Offen bleibt ehrlich: was `toMarkdown()` an KI-Kontingent verbraucht, ist nicht separat
+ausgewiesen. Bei rund fünfzehn Dokumenten, die sich selten ändern, erwarte ich das
+unkritisch — den Zähler sollte man in der ersten Woche trotzdem anschauen.
 
 ---
 
-## 4. Datenmodell (D1)
+## 5. Daten
 
-```sql
--- Quellen: gepflegte Liste, seed aus data/tarif-quellen.tsv
-CREATE TABLE sources (
-  id            TEXT PRIMARY KEY,      -- "BAU/BRTV"
-  gewerk        TEXT NOT NULL,         -- BAU | GERUESTBAU | MALER | TISCHLER | UEBERGREIFEND
-  firmen        TEXT NOT NULL,
-  kuerzel       TEXT NOT NULL,
-  typ           TEXT NOT NULL,         -- 'pdf' | 'watch'
-  url           TEXT NOT NULL,
-  dateiname     TEXT NOT NULL,
-  aktiv         INTEGER NOT NULL DEFAULT 1,
-  hinweis       TEXT                   -- z.B. "nur Mitgliederbereich"
-);
+Schema und Ablage sind in **`MCP-CONTRACT.md`** festgeschrieben, weil der andere Chat
+genau darauf baut. Kurzfassung:
 
--- Ein Dokument = eine Quelle ODER ein manueller Upload
-CREATE TABLE documents (
-  id            TEXT PRIMARY KEY,
-  source_id     TEXT REFERENCES sources(id),   -- NULL bei manuellem Upload
-  gewerk        TEXT NOT NULL,
-  titel         TEXT NOT NULL,
-  herkunft      TEXT NOT NULL,         -- 'auto' | 'manuell'
-  gueltig_ab    TEXT,                  -- manuell pflegbar, siehe §7
-  current_version_id TEXT,
-  letzte_pruefung    TEXT,
-  letzter_status     TEXT,             -- 'ok' | 'unveraendert' | 'fehler'
-  letzter_fehler     TEXT
-);
+- `quellen` — die gepflegte Liste, kommt aus `data/tarif-quellen.tsv`
+- `dokumente` — ein Vertrag, entweder automatisch geholt oder hochgeladen
+- `versionen` — jede Fassung bleibt erhalten, nichts wird überschrieben
+- `meldungen` — Änderungen, Fehler, Uploads; mit gelesen/ungelesen
+- `dokumente_fts` — Volltextindex über den Text, für die spätere Suche im MCP
 
-CREATE TABLE versions (
-  id            TEXT PRIMARY KEY,
-  document_id   TEXT NOT NULL REFERENCES documents(id),
-  erfasst_am    TEXT NOT NULL,
-  r2_raw_key    TEXT NOT NULL,         -- raw/<gewerk>/<doc>/<ts>.pdf
-  r2_md_key     TEXT,                  -- md/<gewerk>/<doc>/<ts>.md
-  bytes         INTEGER,
-  etag          TEXT,                  -- R2-MD5, Basis des Vergleichs
-  http_etag     TEXT,                  -- vom Ursprungsserver
-  http_last_modified TEXT,
-  hochgeladen_von TEXT                 -- E-Mail bei manuellem Upload
-);
+In R2 liegt unter `raw/` das Original und unter `md/` der Text derselben Fassung.
 
--- Changelog. Speist Dashboard und das MCP-Tool "was ist neu"
-CREATE TABLE events (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  zeitpunkt     TEXT NOT NULL,
-  gewerk        TEXT,
-  document_id   TEXT,
-  art           TEXT NOT NULL,         -- 'neu' | 'geaendert' | 'seite_geaendert'
-                                       -- | 'fehler' | 'upload' | 'geloescht'
-  beschreibung  TEXT NOT NULL
-);
-```
-
-Alte Fassungen werden nie gelöscht — `versions` ist die Entsprechung zum `archiv/`-Ordner
-des Shell-Skripts, und das war beim bisherigen Ablauf die wertvollste Eigenschaft.
+Alte Fassungen werden nie gelöscht. Das war beim Shell-Skript die wertvollste Eigenschaft
+und bleibt es.
 
 ---
 
-## 5. Der Sync
+## 6. Der Abruf
 
-### `pdf`-Quellen
-1. Bedingter GET mit gespeichertem `ETag`/`Last-Modified`. Bei `304` → `unveraendert`,
-   fertig.
-2. Sonst Body direkt nach `R2.put()` streamen, Ziel `raw/<gewerk>/<doc>/<ts>.pdf`.
-3. Den von R2 gelieferten MD5-etag mit dem der letzten Version vergleichen. Gleich →
-   Objekt wieder löschen, `unveraendert`.
-4. Unterschiedlich → `env.AI.toMarkdown()`, Markdown nach `md/…`, neue `versions`-Zeile,
-   `documents.current_version_id` umbiegen, `events`-Eintrag `geaendert` (bzw. `neu`).
+**Normale Quellen (`pdf`).** Erst nachfragen, ob sich etwas geändert hat. Wenn nein,
+fertig. Wenn doch: Datei nach R2 streamen, Prüfsumme mit der Vorversion vergleichen, bei
+Gleichstand wieder verwerfen. Bei echtem Unterschied Text erzeugen, neue Version anlegen,
+Meldung schreiben.
 
-### `watch`-Quellen
-Für Tischler Nord, Gerüstbau-Bundesinnung und die Malerkasse-Tarifseite:
-HTML holen → `toMarkdown()` mit `conversionOptions.html.cssSelector` auf den Inhaltsbereich,
-damit Navigation und Cookie-Banner den Vergleich nicht ständig verfälschen. Der
-Markdown-Text ist die Vergleichsbasis, nicht das rohe HTML — genau das behebt die
-Fehlalarme, die im bisherigen README unter „Wichtig" stehen.
+**Beobachtete Seiten (`watch`).** Für Tischler Nord, die Gerüstbau-Bundesinnung und die
+Malerkasse gibt es keinen direkten Download. Hier wird die Seite geholt und **als Text
+verglichen, nicht als HTML**, mit einem CSS-Selektor auf den Inhaltsbereich. Das behebt
+genau die Fehlalarme, die im bisherigen README unter „Wichtig" stehen: Navigation und
+Cookie-Banner ändern sich ständig, der Inhalt nicht.
 
-Zusätzlich werden PDF-Links aus der Seite extrahiert. Taucht ein neuer auf, wird er als
-Dokument-Kandidat vorgeschlagen. Bei Tischler Nord wird das hinter dem Login ins Leere
-laufen — die Seitenänderung selbst ist dort das Signal, und der Event heißt entsprechend
-`seite_geaendert` mit dem Hinweis „Volltext nur im Mitgliederbereich, bitte manuell
-hochladen".
+Findet sich auf so einer Seite ein neuer PDF-Link, wird er als Kandidat gemeldet. Bei
+Tischler Nord läuft das hinter dem Login ins Leere — dort ist die Seitenänderung selbst
+das Signal, mit dem Hinweis, dass der Volltext von Hand hochgeladen werden muss.
 
-### Fehlerbehandlung
-Fehler brechen nichts ab, sie landen in `documents.letzter_fehler` und als `events`-Zeile.
-Das Dashboard zeigt sie oben. Wenn eine deutsche Behördenseite Cloudflare-IPs abweist
-(bei `zoll.de`/`bmas.de` nicht auszuschließen), sieht man das dort sofort, statt es in
-einem Logfile zu verpassen. Realistischer Fallback in dem Fall: die Quelle auf `watch`
-stellen und das PDF manuell hochladen.
+**Fehler** brechen nichts ab. Sie landen als Meldung und rot in der Übersicht. Wenn eine
+Behördenseite Cloudflare-Adressen abweist — bei `zoll.de` oder `bmas.de` nicht
+auszuschließen — sieht man das sofort, statt es in einem Logfile zu verpassen.
 
 ---
 
-## 6. Dashboard
-
-Statisches Frontend (`ASSETS`) plus JSON-API im Worker. Kein Framework-Aufbau nötig —
-eine Seite, deutschsprachig:
-
-- **Statusübersicht** pro Gewerk: grün (aktuell), gelb (Seite geändert, Handlungsbedarf),
-  rot (Abruf fehlgeschlagen). Datum der letzten Prüfung.
-- **Dokumentliste** mit Download als PDF *und* als Markdown, plus Versionshistorie.
-- **Changelog** aus `events`, das Gegenstück zu `AENDERUNGEN.md`.
-- **Upload**: Datei + Gewerk + Titel + Gültigkeitsdatum. Läuft durch dieselbe
-  `toMarkdown()`-Pipeline, landet also als vollwertige Version im selben Bestand und ist
-  damit sofort über den MCP sichtbar. Das ist der Weg für Tischler und Lohn-TV Gerüstbau.
-- **Quellenpflege**: URL einer Quelle korrigieren, wenn ein Betreiber seine Seite umbaut.
-
-API-Routen: `GET /api/uebersicht`, `GET /api/dokumente`, `GET /api/dokumente/:id`,
-`GET /api/events`, `POST /api/upload`, `PATCH /api/quellen/:id`,
-`POST /api/sync` (manueller Anstoß).
-
----
-
-## 7. MCP-Server
-
-`createMcpHandler()` aus `agents/mcp/server` — die aktuell empfohlene, zustandslose
-Variante mit Streamable HTTP. Zustandslos heißt: keine Durable Objects, was uns im
-Free-Plan hält.
-
-### Tools
-
-| Tool | Zweck |
-|---|---|
-| `gewerke_auflisten` | Gewerke mit Dokumentzahl und Aktualitätsstand |
-| `dokumente_auflisten` | Dokumente, filterbar nach Gewerk |
-| `dokument_lesen` | Volltext-Markdown einer Version (Standard: aktuell) |
-| `was_ist_neu` | Änderungen seit Datum X, optional pro Gewerk — **das Tool für die Beispielfrage** |
-| `aenderung_anzeigen` | Diff zwischen zwei Versionen, lazy berechnet |
-| `tarife_durchsuchen` | Volltextsuche über alle Markdown-Dokumente |
-
-`tarife_durchsuchen` läuft über **D1 FTS5** — eine `documents_fts`-Tabelle, die beim
-Speichern einer Version mitgeschrieben wird. Kein Vectorize, keine Embeddings: die Fragen
-hier sind „was steht zum Urlaubsgeld drin", also Stichwortsuche in einem überschaubaren
-Korpus. Semantische Suche wäre teurer und in der Sache schlechter.
-
-Zusätzlich MCP-**Resources** pro Dokument (`tarif://<gewerk>/<kuerzel>`), damit Claude
-Dokumente auch ohne Tool-Aufruf anheften kann.
-
-### Wichtig für die Antwortqualität
-Jedes Tool liefert Metadaten mit: Quelle, Abrufdatum, Gültigkeitsdatum und ob es sich um
-eine amtliche Fassung oder einen manuellen Upload handelt. Bei Tischler-Dokumenten kommt
-der Hinweis mit, dass keine Allgemeinverbindlicherklärung existiert. Das README warnt
-zurecht, dass etwa beim Maler-Rahmentarifvertrag ältere Fassungen kursieren — Claude soll
-das Gültigkeitsdatum mitnennen können, statt eine Zahl ohne Stand zu behaupten.
-
-### OAuth
-`workers-oauth-provider` als eigener Autorisierungsserver, mit Cloudflare Access als
-vorgelagertem Login:
-
-```
-Claude ──DCR /register──▶ Worker (workers-oauth-provider)
-Claude ──/authorize─────▶ Worker ──OIDC──▶ Cloudflare Access ──▶ Login (E-Mail-Code / SSO)
-Claude ◀──eigenes Token── Worker
-```
-
-Der Worker muss ein eigenes Token ausstellen — Access für SaaS kennt keine Dynamic Client
-Registration, Claude braucht sie aber. `workers-oauth-provider` löst genau das: es macht
-DCR nach außen und spricht nach innen OIDC mit Access.
-
-Nötige Secrets (Access-for-SaaS-App, OIDC, Redirect auf `/callback`):
-`ACCESS_CLIENT_ID`, `ACCESS_CLIENT_SECRET`, `ACCESS_AUTHORIZATION_URL`,
-`ACCESS_TOKEN_URL`, `ACCESS_JWKS_URL`, `COOKIE_ENCRYPTION_KEY`.
-
-Die Access-Policy (z.B. „E-Mail endet auf `@gruppenwerk.de`") gilt damit für Dashboard und
-MCP gleichermaßen, an einer Stelle gepflegt. Zero Trust ist bis 50 Nutzer kostenlos.
-
-Anbindung in Claude: Einstellungen → Connectors → eigener Connector,
-URL `https://<worker>/mcp`. Beim ersten Aufruf öffnet sich der Access-Login.
-
----
-
-## 8. Dateien
+## 7. Dateien
 
 ```
 tarifcheck/
-├─ wrangler.jsonc              Bindings, Cron "15 6 * * *", assets
-├─ package.json
-├─ SETUP.md                    Befehle: R2/D1/KV anlegen, Access-App, Secrets, Deploy
-├─ data/tarif-quellen.tsv      Quellenliste (bereits im Repo)
-├─ migrations/0001_init.sql    Schema + FTS5
-├─ scripts/seed-sources.ts     TSV → D1
+├─ wrangler.jsonc              Bindings, Cron, Assets
+├─ MCP-CONTRACT.md             Vertrag für das mcpee-Repo
+├─ SETUP.md                    Befehle zum Einrichten und Deployen
+├─ data/tarif-quellen.tsv      Quellenliste
+├─ migrations/0001_init.sql    Schema samt Volltextindex
+├─ scripts/seed-sources.mjs    TSV → SQL
 ├─ src/
-│  ├─ index.ts                 fetch + scheduled, Routing
-│  ├─ auth/access.ts           OIDC-Handler gegen Cloudflare Access
-│  ├─ auth/provider.ts         OAuthProvider-Konfiguration
-│  ├─ sync/cron.ts             Fan-out
-│  ├─ sync/source.ts           eine Quelle abarbeiten (pdf | watch)
-│  ├─ sync/markdown.ts         toMarkdown-Aufrufe
-│  ├─ lib/{db,storage,diff}.ts
-│  ├─ api/{uebersicht,dokumente,upload,quellen}.ts
-│  └─ mcp/{server,tools,resources}.ts
-└─ public/                     Dashboard (index.html, app.js, style.css)
+│  ├─ index.ts                 Routing, fetch + scheduled
+│  ├─ sync/                    Abruf, Textumwandlung
+│  ├─ api/                     JSON für die Seite
+│  └─ lib/                     Datenbank, Speicher, Hilfen
+└─ public/                     die Seite selbst
 ```
 
 ---
 
-## 9. Reihenfolge
+## 8. Wie geprüft wird
 
-1. Gerüst: `wrangler.jsonc`, Migration, Seed aus dem TSV. Prüfbar mit `wrangler d1 execute`.
-2. Sync für `pdf`-Quellen inkl. Fan-out und R2/D1-Schreiben.
-3. `toMarkdown` anschließen, Markdown nach R2, FTS5 füllen.
-4. `watch`-Quellen mit CSS-Selektor-Vergleich.
-5. Dashboard: Übersicht, Download, Changelog.
-6. Upload-Pfad (Tischler-Lücke geschlossen).
-7. Cloudflare Access + `workers-oauth-provider`.
-8. MCP-Tools und -Resources.
-9. `SETUP.md` schreiben.
-
-Nach Schritt 3 ist der Kernnutzen da, nach Schritt 8 die Beispielfrage beantwortbar.
-
----
-
-## 10. Wie geprüft wird
-
-- **Lokal:** `wrangler dev` mit lokalem D1/R2. `curl` auf `/internal/sync/BAU%2FBRTV`,
-  dann `wrangler d1 execute --local --command "select * from versions"` — es muss genau
-  eine Version entstehen. Zweiter Aufruf muss `unveraendert` liefern, nicht eine zweite
-  Version. Das ist der Test, der die ganze Änderungserkennung trägt.
-- **Markdown:** `wrangler r2 object get` auf den `md/`-Key, sichtprüfen, ob der BRTV-Text
-  lesbar konvertiert ist. PDF-Layout-Konvertierung ist die Stelle, an der es real schiefgehen
-  kann, und das sieht man nur, wenn man draufschaut.
-- **CPU:** nach dem ersten echten Cron-Lauf die CPU-Zeit pro Invocation in den
-  Worker-Metriken prüfen. Liegt sie nahe 10 ms, greift der `cpu_ms`-Schalter aus §3.
-- **Upload:** eine Beispiel-PDF über das Dashboard hochladen, danach muss sie über
-  `dokumente_auflisten` im MCP auftauchen.
-- **MCP:** `npx @modelcontextprotocol/inspector` gegen `/mcp`, OAuth-Flow durchlaufen,
-  jedes Tool einmal aufrufen.
-- **Abnahme:** Connector in Claude einrichten und „was ist neu bei Tischlern, nutz den
-  MCP" fragen. Die Antwort muss Gültigkeitsdatum und Quelle nennen.
+- **Abruf:** `wrangler dev`, dann von Hand eine Quelle anstoßen. Danach muss genau eine
+  Version in der Datenbank stehen. Der zweite Aufruf darf **keine** zweite anlegen — das
+  ist der Test, der die ganze Änderungserkennung trägt.
+- **Text:** die erzeugte Textfassung des BRTV einmal ansehen. Ob ein PDF-Layout sauber in
+  Text übergeht, sieht man nur, wenn man draufschaut.
+- **Rechenzeit:** nach dem ersten echten Cron-Lauf in den Worker-Statistiken prüfen. Liegt
+  sie nahe an 10 ms, greift der Schalter aus §4.
+- **Hochladen:** eine Beispieldatei hochladen und prüfen, ob Version und Meldung entstehen.
+- **Abnahme:** eine Quelle absichtlich auf eine kaputte URL setzen und schauen, ob die
+  Seite das rot meldet, ohne dass die anderen Quellen darunter leiden.
 
 ---
 
-## 11. Was das System nicht leisten kann
+## 9. Was das System nicht leisten kann
 
-Kein Softwareproblem, sondern Rechtslage — steht hier, damit es nicht später als Bug
-gemeldet wird:
+Kein Softwareproblem, sondern Rechtslage:
 
-- **Tischler:** keine Allgemeinverbindlicherklärung, kein öffentlicher Volltext.
-  Automatisch geht nur die Überwachung der Downloadseite; der Volltext kommt per Upload
-  rein. Dasselbe beim **Lohn-TV Gerüstbau** (Mitgliederbereich der Bundesinnung).
-- **Layout-Umbauten** bei den Betreibern können Links brechen. Das System meldet den
-  Fehler sichtbar im Dashboard, reparieren muss man die URL von Hand — dafür gibt es die
-  Quellenpflege.
-- **Gültigkeitsdaten** liest niemand automatisch verlässlich aus dem PDF. Das Feld ist
-  pflegbar, und der MCP gibt aus, was gepflegt ist. Lieber ein leeres Feld als eine
-  falsche Zahl.
+- **Tischler:** keine Allgemeinverbindlicherklärung, kein öffentlicher Volltext. Der Text
+  liegt nur im Mitgliederbereich von Tischler Nord. Automatisch geht die Überwachung der
+  Seite, den Volltext lädt man hoch. Dasselbe beim **Lohn-TV Gerüstbau**.
+- **Layout-Umbauten** bei den Betreibern brechen Links. Das System meldet es sichtbar,
+  die Adresse korrigiert man von Hand.
+- **Gültigkeitsdaten** liest niemand zuverlässig automatisch aus einem PDF. Das Feld ist
+  pflegbar, und ausgegeben wird nur, was gepflegt ist. Lieber leer als falsch.

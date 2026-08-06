@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "tarifcheck",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Taeglich 06:15 UTC. Cron-Ausdruecke laufen immer in UTC.
+  "triggers": {
+    "crons": ["15 6 * * *"]
+  },
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Der Worker entscheidet zuerst - sonst wuerde /api/... von den
+    // statischen Dateien abgefangen, bevor der Code drankommt.
+    "run_worker_first": ["/api/*", "/intern/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tarifcheck",
+      "database_id": "PLATZHALTER_SIEHE_SETUP_MD",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "tarifcheck"
+    }
+  ],
+
+  "ai": {
+    "binding": "AI"
+  },
+
+  // Selbstbindung: der Cron ruft sich hierueber einmal pro Quelle auf.
+  // Laeuft am Netzwerk vorbei, also auch an Cloudflare Access vorbei.
+  "services": [
+    {
+      "binding": "SELF",
+      "service": "tarifcheck"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+
+  // Nur noetig, falls die 10ms Rechenzeit des Free-Plans nicht reichen.
+  // Setzt Workers Paid voraus. Siehe PLAN.md Abschnitt 4.
+  // "limits": { "cpu_ms": 30000 }
+}

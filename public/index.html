@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarifcheck — Gruppenwerk</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>📋</text></svg>">
+</head>
+<body>
+<header>
+  <div class="kopf-innen">
+    <h1>Tarifcheck</h1>
+    <p class="unterzeile">Tarifverträge der Gruppenwerk-Gewerke</p>
+    <button id="jetzt-pruefen" class="knopf-still" title="Alle Quellen sofort abrufen">
+      Jetzt prüfen
+    </button>
+  </div>
+  <nav id="reiter">
+    <button data-ansicht="uebersicht" class="aktiv">Übersicht</button>
+    <button data-ansicht="meldungen">
+      Benachrichtigungen <span id="ungelesen-zahl" class="plakette" hidden></span>
+    </button>
+    <button data-ansicht="dokumente">Dokumente</button>
+    <button data-ansicht="quellen">Quellen</button>
+    <button data-ansicht="hochladen">Hochladen</button>
+  </nav>
+</header>
+
+<main>
+  <div id="hinweisleiste" hidden></div>
+
+  <section id="ansicht-uebersicht" class="ansicht"></section>
+  <section id="ansicht-meldungen" class="ansicht" hidden></section>
+  <section id="ansicht-dokumente" class="ansicht" hidden></section>
+  <section id="ansicht-quellen" class="ansicht" hidden></section>
+
+  <section id="ansicht-hochladen" class="ansicht" hidden>
+    <div class="karte">
+      <h2>Dokument hochladen</h2>
+      <p class="erklaerung">
+        Für alles, was es nicht frei im Netz gibt — Tischlerhandwerk und den
+        Lohn-Tarifvertrag Gerüstbau. Die Datei wird genauso in Text umgewandelt wie
+        die automatisch geholten und steht danach gleichwertig zur Verfügung.
+      </p>
+      <form id="upload-form">
+        <label>Datei
+          <input type="file" name="datei" required
+                 accept=".pdf,.docx,.doc,.html,.htm,.txt,.md,.png,.jpg,.jpeg">
+        </label>
+        <label>Gewerk
+          <select name="gewerk" required>
+            <option value="">— bitte wählen —</option>
+            <option value="BAU">Bau</option>
+            <option value="GERUESTBAU">Gerüstbau</option>
+            <option value="MALER">Maler</option>
+            <option value="TISCHLER">Tischler</option>
+            <option value="UEBERGREIFEND">Übergreifend</option>
+          </select>
+        </label>
+        <label>Titel
+          <input type="text" name="titel" required
+                 placeholder="z. B. Manteltarifvertrag Tischlerhandwerk Nord">
+        </label>
+        <label>Gültig ab <span class="freiwillig">(freiwillig, aber hilfreich)</span>
+          <input type="date" name="gueltig_ab">
+        </label>
+        <button type="submit" class="knopf">Hochladen</button>
+      </form>
+      <p class="erklaerung klein">
+        Das Gültigkeitsdatum wird bewusst nicht aus dem PDF geraten. Was hier steht,
+        gibt der MCP später mit aus — lieber leer als falsch.
+      </p>
+    </div>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
