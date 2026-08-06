@@ -1,10 +1,11 @@
+import { WorkerEntrypoint } from "cloudflare:workers";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { apiRouten } from "./api/routen";
 import { accessRouten } from "./auth/access";
 import { fehler, json } from "./lib/antwort";
 import type { Env } from "./lib/typen";
 import { mcpHandler, toolsJson } from "./mcp/server";
-import { INTERN_KOPF, alleQuellenAnstossen } from "./sync/cron";
+import { alleQuellenAnstossen } from "./sync/cron";
 import { quelleAbrufen } from "./sync/quelle";
 
 /**
@@ -27,22 +28,6 @@ const seitenHandler = {
     const anmeldung = await accessRouten(request, env as never, url);
     if (anmeldung) return anmeldung;
 
-    // Interner Abrufweg. Nur ueber die Selbstbindung, die der Cron benutzt.
-    // Ein Endpunkt, der fremde Adressen abruft, soll nicht allein an Access
-    // haengen - deshalb zusaetzlich die Kopfzeile.
-    if (url.pathname.startsWith("/intern/sync/")) {
-      if (request.headers.get(INTERN_KOPF) !== "1") return fehler("Nicht erlaubt", 403);
-      const quelleId = decodeURIComponent(url.pathname.slice("/intern/sync/".length));
-      try {
-        return json(await quelleAbrufen(env, quelleId));
-      } catch (e) {
-        // quelleAbrufen faengt Abruffehler selbst ab und schreibt sie in die
-        // Datenbank. Hier landet nur, was davor schiefgeht - etwa eine Quelle,
-        // die es gar nicht gibt. Das soll sichtbar sein, nicht still verschwinden.
-        return json({ dokument_id: quelleId, status: "fehler", meldung: String(e) }, 500);
-      }
-    }
-
     if (url.pathname.startsWith("/api/")) {
       try {
         return (await apiRouten(request, env, url)) ?? fehler("Unbekannter Endpunkt", 404);
@@ -55,6 +40,20 @@ const seitenHandler = {
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Was die Selbstbindung dem Cron anbietet.
+ *
+ * Als RPC-Methode und nicht als HTTP-Pfad: ein Endpunkt, der fremde Adressen
+ * abruft und Rechenzeit verbraucht, hat im offenen Netz nichts zu suchen. Ein
+ * geheimer Kopfzeilenwert waere kein Schutz gewesen - den kann jeder
+ * mitschicken. Eine RPC-Methode ist ueber HTTP gar nicht ansprechbar.
+ */
+export class SyncEntrypoint extends WorkerEntrypoint<Env> {
+  quelleAbrufen(quelleId: string) {
+    return quelleAbrufen(this.env, quelleId);
+  }
+}
 
 /**
  * Der MCP-Endpunkt. Der OAuth-Provider laesst hier nur Anfragen mit gueltigem

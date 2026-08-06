@@ -54,19 +54,28 @@
   ],
 
   // Selbstbindung: der Cron ruft sich hierueber einmal pro Quelle auf.
-  // Laeuft am Netzwerk vorbei, also auch an Cloudflare Access vorbei.
+  // Als RPC-Einstieg, damit der Weg ueber HTTP gar nicht erst existiert.
   "services": [
     {
       "binding": "SELF",
-      "service": "tarifcheck"
+      "service": "tarifcheck",
+      "entrypoint": "SyncEntrypoint"
     }
   ],
 
   "observability": {
     "enabled": true
-  }
+  },
 
-  // Nur noetig, falls die 10ms Rechenzeit des Free-Plans nicht reichen.
-  // Setzt Workers Paid voraus. Siehe PLAN.md Abschnitt 4.
-  // "limits": { "cpu_ms": 30000 }
+  // Setzt Workers Paid voraus (5 $/Monat).
+  //
+  // Noetig, weil der Text mit pdf.js gewonnen wird statt mit der
+  // KI-Umwandlung: die scheiterte an drei von siebzehn Vertraegen, ohne einen
+  // Fehler zu melden. pdf.js kostet dafuer Rechenzeit - der BRTV braucht rund
+  // 1,3 Sekunden, das 130-fache dessen, was der kostenlose Tarif erlaubt.
+  //
+  // Der Wert ist die Obergrenze, nicht der Verbrauch: abgerechnet wird nur,
+  // was tatsaechlich gerechnet wird, und das faellt nur an, wenn sich ein
+  // Vertrag wirklich geaendert hat.
+  "limits": { "cpu_ms": 120000 }
 }

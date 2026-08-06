@@ -1,9 +1,6 @@
 import { aktiveQuellen } from "../lib/db";
 import type { Env, SyncErgebnis } from "../lib/typen";
 
-/** Nur ueber die Selbstbindung erreichbar, nicht von aussen. */
-export const INTERN_KOPF = "x-tarifcheck-intern";
-
 /**
  * Stoesst pro Quelle einen eigenen Aufruf an, statt alle der Reihe nach
  * abzuarbeiten.
@@ -12,8 +9,9 @@ export const INTERN_KOPF = "x-tarifcheck-intern";
  * Free-Plan sind das 10 ms pro Aufruf), und eine haengende oder kaputte
  * Quelle reisst die anderen nicht mit.
  *
- * Der Weg geht ueber die Selbstbindung, also am Netzwerk vorbei - und damit
- * auch an Cloudflare Access vorbei, das die oeffentliche Adresse schuetzt.
+ * Der Weg geht ueber die Selbstbindung als RPC, also am Netzwerk vorbei - und
+ * damit auch an Cloudflare Access vorbei, das die oeffentliche Adresse
+ * schuetzt. Ueber HTTP ist dieser Weg gar nicht erst erreichbar.
  */
 export async function alleQuellenAnstossen(
   env: Env,
@@ -29,12 +27,7 @@ export async function alleQuellenAnstossen(
   for (let i = 0; i < quellen.length; i += GRUPPE) {
     const teil = quellen.slice(i, i + GRUPPE);
     const antworten = await Promise.allSettled(
-      teil.map((q) =>
-        env.SELF.fetch(`https://intern/intern/sync/${encodeURIComponent(q.id)}`, {
-          method: "POST",
-          headers: { [INTERN_KOPF]: "1" },
-        }).then((r) => r.json<SyncErgebnis>()),
-      ),
+      teil.map((q) => env.SELF.quelleAbrufen(q.id)),
     );
 
     antworten.forEach((a, idx) => {

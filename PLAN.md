@@ -79,7 +79,7 @@ Anmeldeverfahren dahinter.
 |---|---|---|
 | `R2` | R2 Bucket `tarifcheck` | Originaldateien (`raw/`) und Text (`md/`) |
 | `DB` | D1 `tarifcheck` | Quellen, Dokumente, Versionen, Meldungen |
-| `AI` | Workers AI | `toMarkdown()` für die Textumwandlung |
+| `AI` | Workers AI | Umwandlung der beobachteten HTML-Seiten |
 | `ASSETS` | Static Assets | die Seite |
 | `OAUTH_KV` | KV | Tokens und Grants des MCP |
 
@@ -88,37 +88,30 @@ es im kostenlosen Tarif nicht.
 
 ---
 
-## 4. Kosten — läuft auf Workers Free
+## 4. Kosten — Workers Paid, 5 $/Monat
 
-| Grenze | Free | Bedarf |
-|---|---|---|
-| Rechenzeit je Durchlauf | **10 ms** | die einzige echte Hürde |
-| Externe Abrufe je Durchlauf | 50 | 1–3 pro Quelle |
-| Aufrufe an R2/D1/AI je Durchlauf | 1.000 | unkritisch |
-| Anfragen pro Tag | 100.000 | ~50 |
-| R2 Speicher | 10 GB | < 200 MB |
+| Posten | Kosten |
+|---|---|
+| Workers Paid | 5 $/Monat, gilt fürs ganze Konto |
+| R2 (< 200 MB) | im kostenlosen Rahmen (10 GB) |
+| D1 (< 10 MB) | im kostenlosen Rahmen |
+| KV, Workers AI | im kostenlosen Rahmen |
 
-Die 10 ms Rechenzeit sind der ganze Trick. Drei Regeln halten uns darunter:
+**Warum nicht kostenlos.** Der Zweck der Seite ist Durchsuchbarkeit, und die steht und
+fällt damit, dass aus jedem PDF wirklich Text herauskommt. Die Markdown-Umwandlung von
+Workers AI schaffte das bei drei von siebzehn Verträgen nicht — darunter ausgerechnet der
+BRTV — und meldete dabei keinen Fehler, sondern lieferte stillschweigend leere Seiten.
 
-1. **Jede Quelle einzeln.** Der Cron arbeitet die Quellen nicht der Reihe nach ab, sondern
-   ruft sich selbst einmal pro Quelle auf. Jede bekommt so ihr eigenes frisches Budget.
-   Nebeneffekt: eine kaputte Quelle reißt die anderen nicht mit.
-2. **Nichts selbst durchrechnen.** Änderungserkennung läuft über die Kopfzeilen des
-   Servers (`If-None-Match`, `If-Modified-Since`) — antwortet er „unverändert", kostet das
-   praktisch nichts. Wo er keine schickt, wird die Datei geschrieben und die Prüfsumme
-   verglichen, **die R2 von sich aus zurückgibt**. Große PDFs werden nie im Worker
-   durchgerechnet.
-3. **Der Download ist ein Durchreichen.** Der Datenstrom geht direkt von der Quelle nach
-   R2, ohne im Speicher zusammengebaut zu werden.
+Also wird der Text mit pdf.js gewonnen. Das ist verlässlich und liefert bei allen
+siebzehn vollständige Texte, kostet aber Rechenzeit: der BRTV braucht rund 1,3 Sekunden,
+das 130-fache dessen, was der kostenlose Tarif pro Aufruf erlaubt. Dafür gibt es keinen
+Trick — es ist eine Tarif-Frage.
 
-Falls es doch reißt: eine Zeile `limits.cpu_ms` in `wrangler.jsonc`, das setzt Workers
-Paid voraus (5 $/Monat). Die Zeile liegt auskommentiert bei.
+Der Nebeneffekt ist es fast wert: pdf.js läuft lokal. Die Textgewinnung ist damit zum
+ersten Mal ohne Cloud prüfbar, was mit der KI-Umwandlung nie ging.
 
-Offen bleibt ehrlich: was `toMarkdown()` an KI-Kontingent verbraucht, ist nicht separat
-ausgewiesen. Bei rund fünfzehn Dokumenten, die sich selten ändern, erwarte ich das
-unkritisch — den Zähler sollte man in der ersten Woche trotzdem anschauen.
-
----
+`limits.cpu_ms` steht auf 120.000. Das ist eine Obergrenze, kein Verbrauch — gerechnet
+wird nur, wenn sich ein Vertrag wirklich geändert hat, also ein paarmal im Jahr.
 
 ## 5. Daten
 
@@ -140,9 +133,20 @@ und bleibt es.
 ## 6. Der Abruf
 
 **Normale Quellen (`pdf`).** Erst nachfragen, ob sich etwas geändert hat. Wenn nein,
-fertig. Wenn doch: Datei nach R2 streamen, Prüfsumme mit der Vorversion vergleichen, bei
-Gleichstand wieder verwerfen. Bei echtem Unterschied Text erzeugen, neue Version anlegen,
-Meldung schreiben.
+fertig. Wenn doch: Datei nach R2, Prüfsumme mit der Vorfassung vergleichen, bei
+Gleichstand wieder verwerfen. Bei echtem Unterschied Text mit pdf.js gewinnen, neue
+Fassung anlegen, Meldung schreiben.
+
+Kommt dabei fast nichts heraus — ein Scan ohne Textebene —, wird zusätzlich die
+KI-Umwandlung versucht; sie holt aus Bildern manchmal doch etwas. Bleibt es dabei, wird
+das Dokument als *ohne gewinnbaren Text* markiert und gemeldet, statt als vorhanden zu
+gelten. Ein leerer Vertrag, der sich für vorhanden ausgibt, ist gefährlicher als eine
+sichtbare Lücke.
+
+**Der Cron ruft die Quellen über eine RPC-Bindung auf**, nicht über einen internen
+HTTP-Pfad. Ein Pfad, der fremde Adressen abruft und Rechenzeit verbraucht, wäre sonst von
+außen erreichbar — geschützt nur durch eine Kopfzeile, die jeder mitschicken kann. Eine
+RPC-Methode gibt es im Netz gar nicht.
 
 **Beobachtete Seiten (`watch`).** Für Tischler Nord, die Gerüstbau-Bundesinnung und die
 Malerkasse gibt es keinen direkten Download. Hier wird die Seite geholt und **als Text
@@ -208,3 +212,6 @@ Kein Softwareproblem, sondern Rechtslage:
   die Adresse korrigiert man von Hand.
 - **Gültigkeitsdaten** liest niemand zuverlässig automatisch aus einem PDF. Das Feld ist
   pflegbar, und ausgegeben wird nur, was gepflegt ist. Lieber leer als falsch.
+- **Reine Scans** ohne Textebene bleiben unlesbar. Derzeit ist keiner der siebzehn
+  Verträge betroffen; falls einer dazukommt, meldet die Seite es als Fehler statt ihn
+  stillschweigend als leeres Dokument zu führen.

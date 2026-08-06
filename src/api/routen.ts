@@ -4,7 +4,8 @@ import { meldungAnlegen, volltextSetzen } from "../lib/db";
 import { rohSchluessel, textSchluessel, textSpeichern } from "../lib/speicher";
 import type { Env } from "../lib/typen";
 import { alleQuellenAnstossen } from "../sync/cron";
-import { nachMarkdown, textAusbeute, textBrauchbar } from "../sync/markdown";
+import { nachMarkdown } from "../sync/markdown";
+import { pdfNachText, textAusbeute, textBrauchbar } from "../sync/text";
 import { jetzt, stempel } from "../lib/zeit";
 
 const abgelehnt = () =>
@@ -192,9 +193,16 @@ async function hochladen(env: Env, request: Request): Promise<Response> {
   });
   if (!objekt) return fehler("Datei konnte nicht gespeichert werden", 500);
 
+  const istPdf =
+    datei.type === "application/pdf" || datei.name.toLowerCase().endsWith(".pdf");
+
   let markdown: string;
   try {
-    markdown = await nachMarkdown(env, datei.name, rohBytes);
+    // PDFs ueber pdf.js, alles andere (Word, HTML, Bilder) ueber die
+    // KI-Umwandlung - die kann Formate, die pdf.js nicht kennt.
+    markdown = istPdf
+      ? await pdfNachText(rohBytes, titel || datei.name)
+      : await nachMarkdown(env, datei.name, rohBytes);
   } catch (e) {
     // Die Datei ist gespeichert, nur die Umwandlung ging schief. Aufraeumen
     // und ehrlich melden, statt eine halbe Version stehen zu lassen.

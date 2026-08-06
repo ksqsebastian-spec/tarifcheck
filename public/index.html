@@ -3,76 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tarifcheck — Gruppenwerk</title>
+<title>Tarifcheck</title>
+<meta name="description" content="Die Tarifverträge der Gruppenwerk-Gewerke, täglich abgeglichen.">
 <link rel="stylesheet" href="/style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>📋</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231F7A5C'/%3E%3Cg fill='%23fff'%3E%3Crect x='14' y='19' width='36' height='6' rx='3'/%3E%3Crect x='14' y='30' width='36' height='6' rx='3'/%3E%3Crect x='14' y='41' width='21' height='6' rx='3'/%3E%3C/g%3E%3C/svg%3E">
 </head>
 <body>
+
 <header>
-  <div class="kopf-innen">
-    <h1>Tarifcheck</h1>
-    <p class="unterzeile">Tarifverträge der Gruppenwerk-Gewerke</p>
-    <button id="jetzt-pruefen" class="knopf-still" title="Alle Quellen sofort abrufen">
-      Jetzt prüfen
-    </button>
+  <div class="wrap">
+    <div class="kopfzeile">
+      <span class="wortmarke">
+        <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true">
+          <rect width="64" height="64" rx="16" fill="#1F7A5C"/>
+          <g fill="#fff">
+            <rect x="14" y="19" width="36" height="6" rx="3"/>
+            <rect x="14" y="30" width="36" height="6" rx="3"/>
+            <rect x="14" y="41" width="21" height="6" rx="3"/>
+          </g>
+        </svg>
+        Tarifcheck
+      </span>
+      <span class="fuellung"></span>
+      <button id="pruefen" class="knopf-rand">Jetzt prüfen</button>
+    </div>
+    <nav role="tablist">
+      <button role="tab" data-ansicht="uebersicht" aria-selected="true">Übersicht</button>
+      <button role="tab" data-ansicht="meldungen" aria-selected="false">
+        Benachrichtigungen <span id="zaehler" class="plakette" hidden></span>
+      </button>
+      <button role="tab" data-ansicht="dokumente" aria-selected="false">Dokumente</button>
+      <button role="tab" data-ansicht="quellen" aria-selected="false">Quellen</button>
+      <button role="tab" data-ansicht="hochladen" aria-selected="false">Hochladen</button>
+    </nav>
   </div>
-  <nav id="reiter">
-    <button data-ansicht="uebersicht" class="aktiv">Übersicht</button>
-    <button data-ansicht="meldungen">
-      Benachrichtigungen <span id="ungelesen-zahl" class="plakette" hidden></span>
-    </button>
-    <button data-ansicht="dokumente">Dokumente</button>
-    <button data-ansicht="quellen">Quellen</button>
-    <button data-ansicht="hochladen">Hochladen</button>
-  </nav>
 </header>
 
 <main>
-  <div id="hinweisleiste" hidden></div>
-
-  <section id="ansicht-uebersicht" class="ansicht"></section>
-  <section id="ansicht-meldungen" class="ansicht" hidden></section>
-  <section id="ansicht-dokumente" class="ansicht" hidden></section>
-  <section id="ansicht-quellen" class="ansicht" hidden></section>
-
-  <section id="ansicht-hochladen" class="ansicht" hidden>
-    <div class="karte">
-      <h2>Dokument hochladen</h2>
-      <p class="erklaerung">
-        Für alles, was es nicht frei im Netz gibt — Tischlerhandwerk und den
-        Lohn-Tarifvertrag Gerüstbau. Die Datei wird genauso in Text umgewandelt wie
-        die automatisch geholten und steht danach gleichwertig zur Verfügung.
-      </p>
-      <form id="upload-form">
-        <label>Datei
-          <input type="file" name="datei" required
-                 accept=".pdf,.docx,.doc,.html,.htm,.txt,.md,.png,.jpg,.jpeg">
-        </label>
-        <label>Gewerk
-          <select name="gewerk" required>
-            <option value="">— bitte wählen —</option>
-            <option value="BAU">Bau</option>
-            <option value="GERUESTBAU">Gerüstbau</option>
-            <option value="MALER">Maler</option>
-            <option value="TISCHLER">Tischler</option>
-            <option value="UEBERGREIFEND">Übergreifend</option>
-          </select>
-        </label>
-        <label>Titel
-          <input type="text" name="titel" required
-                 placeholder="z. B. Manteltarifvertrag Tischlerhandwerk Nord">
-        </label>
-        <label>Gültig ab <span class="freiwillig">(freiwillig, aber hilfreich)</span>
-          <input type="date" name="gueltig_ab">
-        </label>
-        <button type="submit" class="knopf">Hochladen</button>
-      </form>
-      <p class="erklaerung klein">
-        Das Gültigkeitsdatum wird bewusst nicht aus dem PDF geraten. Was hier steht,
-        gibt der MCP später mit aus — lieber leer als falsch.
-      </p>
-    </div>
-  </section>
+  <div class="wrap">
+    <div id="leiste" hidden></div>
+    <div id="inhalt"></div>
+  </div>
 </main>
 
 <script src="/app.js"></script>

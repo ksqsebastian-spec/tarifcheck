@@ -15,7 +15,8 @@ import {
 } from "../lib/speicher";
 import type { Dokument, Env, SyncErgebnis, Version } from "../lib/typen";
 import { jetzt, stempel } from "../lib/zeit";
-import { nachMarkdown, pdfLinks, textAusbeute, textBrauchbar } from "./markdown";
+import { nachMarkdown, pdfLinks } from "./markdown";
+import { pdfNachText, textAusbeute, textBrauchbar } from "./text";
 
 /**
  * Manche Behoerdenseiten antworten auf Abrufe ohne erkennbaren Browser gar
@@ -181,11 +182,27 @@ async function dateiHolen(
     return { dokument_id: dokument.id, status: "unveraendert" };
   }
 
-  // Echte Aenderung. Erst jetzt umwandeln - das spart das KI-Kontingent.
+  // Echte Aenderung. Erst jetzt Text gewinnen.
   const mdKey = textSchluessel(dokument.gewerk, dokument.id, zeit);
   let markdown: string;
   try {
-    markdown = await nachMarkdown(env, quelle.dateiname, roh);
+    markdown = await pdfNachText(roh, dokument.titel);
+
+    // Kommt dabei fast nichts heraus, ist es vermutlich ein Scan ohne
+    // Textebene. Dann noch die KI-Umwandlung versuchen: sie beschreibt
+    // Bilder und holt aus einem Scan manchmal doch etwas heraus.
+    if (!textBrauchbar(textAusbeute(markdown), bytes, true)) {
+      try {
+        const zweiterVersuch = await nachMarkdown(env, quelle.dateiname, roh);
+        if (textAusbeute(zweiterVersuch) > textAusbeute(markdown)) {
+          markdown = zweiterVersuch;
+        }
+      } catch {
+        // Der erste Weg bleibt stehen. Dass er duenn ist, meldet die Pruefung
+        // weiter unten ohnehin.
+      }
+    }
+
     await textSpeichern(env, mdKey, markdown);
   } catch (e) {
     // Die Datei liegt schon in R2, aber es wird keine Version auf sie zeigen.
@@ -305,7 +322,19 @@ async function seiteBeobachten(
   await pruefungVermerken(env, dokument.id, "ok");
 
   const erstmalig = !vorher;
-  if (!erstmalig) {
+  if (erstmalig) {
+    // Auch die erste Erfassung melden - sonst taucht eine beobachtete Seite
+    // nirgends auf, waehrend jeder heruntergeladene Vertrag es tut.
+    await meldungAnlegen(env, {
+      art: "neu",
+      gewerk: dokument.gewerk,
+      dokumentId: dokument.id,
+      titel: `Neu aufgenommen: ${dokument.titel}`,
+      beschreibung:
+        `Beobachtete Seite, erstmals erfasst. Ab jetzt wird gemeldet, wenn sich ` +
+        `ihr Inhalt ändert.` + (quelle.hinweis ? `\n\n${quelle.hinweis}` : ""),
+    });
+  } else {
     const links = pdfLinks(html, quelle.url);
     await meldungAnlegen(env, {
       art: "seite_geaendert",

@@ -1,10 +1,20 @@
+// Nur als Typ importiert - zur Laufzeit entsteht dadurch kein Kreis.
+import type { SyncEntrypoint } from "../index";
+
 export interface Env {
   DB: D1Database;
   R2: R2Bucket;
   AI: Ai;
   ASSETS: Fetcher;
-  /** Selbstbindung. Der Cron ruft sich hierueber pro Quelle einmal auf. */
-  SELF: Fetcher;
+  /**
+   * Selbstbindung als RPC. Der Cron ruft sie pro Quelle einmal auf.
+   *
+   * Bewusst RPC und nicht HTTP: ein interner HTTP-Pfad waere von aussen
+   * erreichbar und muesste ueber eine geheime Kopfzeile geschuetzt werden -
+   * also ueber etwas, das jeder mitschicken kann, der sie erraet. Eine
+   * RPC-Methode gibt es im Netz schlicht nicht.
+   */
+  SELF: Service<SyncEntrypoint>;
 
   /** Tokens und Grants des OAuth-Providers. */
   OAUTH_KV: KVNamespace;
@@ -74,7 +84,7 @@ export type MeldungsArt =
   | "fehler"
   | "upload";
 
-/** Ergebnis eines Quellen-Abrufs. Wird als JSON zurueckgegeben. */
+/** Ergebnis eines Quellen-Abrufs. */
 export interface SyncErgebnis {
   dokument_id: string;
   status: "ok" | "unveraendert" | "fehler";

@@ -69,6 +69,12 @@ Spalten, die man leicht falsch versteht:
 - **`dokumente.gueltig_ab`** — von Hand gepflegt, oft `NULL`. Wird bewusst nicht aus dem
   PDF geraten. `NULL` heißt „unbekannt", nicht „gilt ab immer".
 - **`versionen.etag`** — MD5 von R2, interne Vergleichsbasis. Für den MCP ohne Bedeutung.
+- **`versionen.text_zeichen`** — wieviel lesbarer Text herauskam, Überschriften und
+  Seitenmarken abgezogen.
+- **`versionen.text_brauchbar`** — `0` heißt: die Datei liegt vor, enthält aber keinen
+  gewinnbaren Text. Solche Dokumente **nicht als vorhandenen Vertrag ausgeben**. Das Feld
+  ist ein gespeichertes Urteil, keine Schwelle zum Nachrechnen — die Regel steht in
+  `src/sync/text.ts` und soll nicht an drei Stellen abgeschrieben werden.
 - **`dokumente.letzter_status`** — `ok`, `unveraendert` oder `fehler`. Bei `fehler` ist
   der Inhalt trotzdem noch der zuletzt erfolgreich geholte, nur eben womöglich veraltet.
   Das gehört in die Antwort.

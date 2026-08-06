@@ -18,7 +18,8 @@ Nachfolger von `tarif-sync.sh` — ohne Rechner, der durchlaufen muss.
 ## Kurz
 
 Ein Cloudflare Worker holt jeden Morgen die Tarifverträge von den amtlichen Quellen und
-den Sozialkassen, erkennt Änderungen, hebt jede Fassung auf und wandelt sie in Text um.
+den Sozialkassen, erkennt Änderungen, hebt jede Fassung auf und gewinnt mit pdf.js den
+Volltext. Alle siebzehn Verträge sind durchsuchbar.
 Auf der Seite sieht man den Stand je Gewerk und bekommt Änderungen als Benachrichtigung.
 Dokumente ohne öffentliche Quelle lädt man dort von Hand hoch.
 

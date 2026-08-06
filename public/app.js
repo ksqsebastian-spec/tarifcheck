@@ -1,38 +1,75 @@
-// Tarifcheck — Oberfläche. Kein Framework: die Seite hat fünf Ansichten und
-// spricht mit einer Handvoll JSON-Endpunkten.
+// Tarifcheck — Oberfläche. Kein Framework: fünf Ansichten, eine Handvoll
+// JSON-Endpunkte. Farbe trägt hier Bedeutung, nicht Dekoration.
 
 const $ = (s) => document.querySelector(s);
-const GEWERK_NAME = {
-  BAU: "Bau", GERUESTBAU: "Gerüstbau", MALER: "Maler",
-  TISCHLER: "Tischler", UEBERGREIFEND: "Übergreifend",
+const inhalt = $("#inhalt");
+
+/* ── Gewerkezeichen ─────────────────────────────────────────────────────
+   Eigene Glyphen statt fremder Logos: die Quellen sind Behörden und
+   Sozialkassen, deren Marken hier nichts zu suchen haben. Die Farbe ist das
+   eigentliche Erkennungsmerkmal — sie zieht sich durch Übersicht, Dokument-
+   und Quellenliste, sodass ein Gewerk überall dieselbe Farbe hat. */
+const GEWERKE = {
+  BAU: {
+    name: "Bau",
+    farbe: "#E8590C",
+    glyph: `<rect x="3" y="5" width="8" height="5" rx="1.2"/><rect x="13" y="5" width="8" height="5" rx="1.2"/>
+            <rect x="3" y="12" width="4" height="5" rx="1.2"/><rect x="9" y="12" width="8" height="5" rx="1.2"/>
+            <rect x="19" y="12" width="2" height="5" rx="1"/><rect x="3" y="19" width="18" height="2.5" rx="1.2"/>`,
+  },
+  GERUESTBAU: {
+    name: "Gerüstbau",
+    farbe: "#1971C2",
+    glyph: `<rect x="3" y="2" width="2.6" height="20" rx="1.3"/><rect x="18.4" y="2" width="2.6" height="20" rx="1.3"/>
+            <rect x="10.7" y="2" width="2.6" height="20" rx="1.3"/>
+            <rect x="3" y="6.5" width="18" height="2.4" rx="1.2"/><rect x="3" y="15.1" width="18" height="2.4" rx="1.2"/>`,
+  },
+  MALER: {
+    name: "Maler",
+    farbe: "#9C36B5",
+    glyph: `<rect x="3" y="3" width="15" height="6.5" rx="2"/><rect x="18" y="5" width="3.4" height="2.5" rx="1.2"/>
+            <rect x="9.4" y="9.5" width="2.4" height="4" rx="1.2"/>
+            <rect x="7" y="13" width="7.2" height="8.6" rx="2.2"/>`,
+  },
+  TISCHLER: {
+    name: "Tischler",
+    farbe: "#B25E1E",
+    glyph: `<rect x="2.5" y="4" width="19" height="5" rx="1.6"/>
+            <path d="M2.5 13h19l-2.4 3.4-2.4-3.4-2.4 3.4L11.9 13l-2.4 3.4L7.1 13l-2.4 3.4z"/>
+            <rect x="2.5" y="19" width="19" height="2.6" rx="1.3"/>`,
+  },
+  UEBERGREIFEND: {
+    name: "Übergreifend",
+    farbe: "#1F7A5C",
+    glyph: `<rect x="3" y="4" width="18" height="3.4" rx="1.7"/><rect x="3" y="10.3" width="18" height="3.4" rx="1.7"/>
+            <rect x="3" y="16.6" width="10" height="3.4" rx="1.7"/>`,
+  },
 };
-const STATUS_TEXT = {
-  aktuell: "Aktuell", handlungsbedarf: "Handlungsbedarf", fehler: "Abruf fehlgeschlagen",
-};
 
-const zeigeGewerk = (g) => GEWERK_NAME[g] ?? g;
+const gw = (k) => GEWERKE[k] ?? { name: k, farbe: "#6e6e78", glyph: `<circle cx="12" cy="12" r="7"/>` };
 
-function datum(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+function marke(gewerk, klasse = "marke") {
+  const g = gw(gewerk);
+  return `<span class="${klasse}" style="background:${g.farbe}1f">
+    <svg viewBox="0 0 24 24" fill="${g.farbe}" aria-hidden="true">${g.glyph}</svg></span>`;
 }
-function datumZeit(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString("de-DE", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
-const esc = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-/** Text aus Meldungen: escapen, dann nackte Links klickbar machen. */
-function textMitLinks(s) {
-  return esc(s).replace(/https?:\/\/[^\s<]+/g, (u) =>
-    `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
-}
+const ZUSTAND = { aktuell: "Aktuell", handlungsbedarf: "Handlungsbedarf", fehler: "Abruf fehlgeschlagen" };
+
+/* ── Kleinkram ──────────────────────────────────────────────────────────── */
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+const mitLinks = (s) => esc(s).replace(/https?:\/\/[^\s<]+/g,
+  (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+
+const datum = (iso) => iso
+  ? new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })
+  : "—";
+const datumZeit = (iso) => iso
+  ? new Date(iso).toLocaleString("de-DE",
+      { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+  : "—";
 
 async function hole(pfad, optionen) {
   const antwort = await fetch(pfad, optionen);
@@ -41,217 +78,197 @@ async function hole(pfad, optionen) {
   return daten;
 }
 
-let hinweisTimer;
-function hinweis(text, art = "") {
-  const leiste = $("#hinweisleiste");
-  leiste.textContent = text;
-  leiste.className = art;
-  leiste.hidden = false;
-  clearTimeout(hinweisTimer);
-  if (art !== "schlecht") hinweisTimer = setTimeout(() => (leiste.hidden = true), 6000);
+let leisteTimer;
+function melden(text, art = "") {
+  const l = $("#leiste");
+  l.textContent = text;
+  l.className = art;
+  l.hidden = false;
+  clearTimeout(leisteTimer);
+  if (art !== "schlecht") leisteTimer = setTimeout(() => (l.hidden = true), 6000);
 }
 
-// ——— Ansichten ———————————————————————————————————————————————
+/* ── Ansichten ──────────────────────────────────────────────────────────── */
+let aktuell = "uebersicht";
+let filter = null;
 
-let aktuelleAnsicht = "uebersicht";
-let dokumentFilter = null;
-
-function wechsle(name) {
-  aktuelleAnsicht = name;
+async function zeige(name) {
+  aktuell = name;
   document.querySelectorAll("nav button").forEach((b) =>
-    b.classList.toggle("aktiv", b.dataset.ansicht === name));
-  document.querySelectorAll(".ansicht").forEach((s) =>
-    (s.hidden = s.id !== `ansicht-${name}`));
-  if (name !== "hochladen") laden(name);
-}
-
-async function laden(name) {
-  const ziel = $(`#ansicht-${name}`);
-  ziel.innerHTML = '<p class="leer">Wird geladen …</p>';
+    b.setAttribute("aria-selected", String(b.dataset.ansicht === name)));
+  inhalt.innerHTML = `<p class="leer">Wird geladen …</p>`;
   try {
-    if (name === "uebersicht") await zeigeUebersicht(ziel);
-    if (name === "meldungen") await zeigeMeldungen(ziel);
-    if (name === "dokumente") await zeigeDokumente(ziel);
-    if (name === "quellen") await zeigeQuellen(ziel);
+    await { uebersicht, meldungen, dokumente, quellen, hochladen }[name]();
   } catch (e) {
-    ziel.innerHTML = `<div class="karte"><p class="leer">Konnte nicht geladen werden: ${esc(e.message)}</p></div>`;
+    inhalt.innerHTML = `<div class="karte"><p class="leer" style="padding:0">
+      Konnte nicht geladen werden: ${esc(e.message)}</p></div>`;
   }
 }
 
-async function zeigeUebersicht(ziel) {
-  const daten = await hole("/api/uebersicht");
-  ungelesenSetzen(daten.ungelesen);
+async function uebersicht() {
+  const d = await hole("/api/uebersicht");
+  zaehlerSetzen(d.ungelesen);
 
-  if (!daten.gewerke.length) {
-    ziel.innerHTML = `<div class="karte"><p class="leer">
-      Noch keine Quellen eingespielt. Siehe SETUP.md, Schritt „Quellen einspielen".</p></div>`;
+  if (!d.gewerke.length) {
+    inhalt.innerHTML = `<div class="karte"><p class="leer" style="padding:0">
+      Noch keine Quellen eingespielt — siehe SETUP.md.</p></div>`;
     return;
   }
 
-  const karten = daten.gewerke.map((g) => `
-    <div class="gewerk ${g.status}" data-gewerk="${esc(g.gewerk)}" role="button" tabindex="0">
-      <div class="name">${esc(zeigeGewerk(g.gewerk))}</div>
-      <div class="status ${g.status}">${STATUS_TEXT[g.status]}</div>
-      <div class="zeile">${g.dokumente} Dokument${g.dokumente === 1 ? "" : "e"}</div>
-      <div class="zeile">Zuletzt geprüft: ${datum(g.letzte_pruefung)}</div>
-      ${Number(g.ohne_inhalt) > 0
-        ? `<div class="warnung">${g.ohne_inhalt} noch ohne Inhalt</div>` : ""}
-    </div>`).join("");
-
-  ziel.innerHTML = `
-    <div class="kopfreihe"><h2>Stand je Gewerk</h2></div>
-    <div class="gewerke">${karten}</div>
-    <div class="karte" style="margin-top:14px">
-      <p class="erklaerung" style="margin:0">
-        Für <strong>Tischler</strong> und den <strong>Lohn-TV Gerüstbau</strong> gibt es keine
-        öffentliche Volltextquelle — dort wird nur die Downloadseite überwacht. Meldet sie eine
-        Änderung, muss das Dokument einmal von Hand hochgeladen werden.
-      </p>
+  inhalt.innerHTML = `
+    <div class="abschnitt rise"><h2>Stand je Gewerk</h2><span class="fuellung"></span>
+      <span class="meta">${d.gewerke.reduce((n, g) => n + g.dokumente, 0)} Dokumente</span></div>
+    <div class="gitter">
+      ${d.gewerke.map((g, i) => `
+        <button class="gewerk rise d${Math.min(6, i + 1)}" data-gewerk="${esc(g.gewerk)}">
+          <div class="kopf">${marke(g.gewerk)}
+            <div><h3>${esc(gw(g.gewerk).name)}</h3>
+              <div class="zahl">${g.dokumente} Dokument${g.dokumente === 1 ? "" : "e"}</div></div>
+          </div>
+          <div class="fuss">
+            <span class="ampel ${g.status}"></span>
+            <span class="zustand ${g.status}">${ZUSTAND[g.status]}</span>
+          </div>
+          <div class="gepruef">Geprüft ${datum(g.letzte_pruefung)}</div>
+        </button>`).join("")}
+    </div>
+    <div class="notiz rise d6" style="margin-top:20px">
+      Für <b>Tischler</b> und den <b>Lohn-TV Gerüstbau</b> gibt es keine öffentliche
+      Volltextquelle — dort wird nur die Downloadseite überwacht. Meldet sie eine Änderung,
+      muss das Dokument einmal von Hand hochgeladen werden.
     </div>`;
 
-  ziel.querySelectorAll(".gewerk").forEach((k) => {
-    const oeffnen = () => { dokumentFilter = k.dataset.gewerk; wechsle("dokumente"); };
-    k.addEventListener("click", oeffnen);
-    k.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") oeffnen(); });
-  });
+  inhalt.querySelectorAll(".gewerk").forEach((k) =>
+    k.addEventListener("click", () => { filter = k.dataset.gewerk; zeige("dokumente"); }));
 }
 
-async function zeigeMeldungen(ziel) {
-  const daten = await hole("/api/meldungen");
-  const ungelesen = daten.meldungen.filter((m) => !m.gelesen).length;
-  ungelesenSetzen(ungelesen);
+async function meldungen() {
+  const d = await hole("/api/meldungen");
+  const offen = d.meldungen.filter((m) => !m.gelesen).length;
+  zaehlerSetzen(offen);
 
-  if (!daten.meldungen.length) {
-    ziel.innerHTML = `<div class="karte"><p class="leer">
-      Noch nichts passiert. Hier erscheinen Änderungen, Fehler und Uploads.</p></div>`;
+  if (!d.meldungen.length) {
+    inhalt.innerHTML = `<div class="karte"><p class="leer" style="padding:0">
+      Nichts Neues. Hier erscheinen Änderungen, Fehler und Uploads.</p></div>`;
     return;
   }
 
-  ziel.innerHTML = `
-    <div class="kopfreihe">
-      <h2>Benachrichtigungen</h2>
-      ${ungelesen ? '<button id="alle-gelesen" class="knopf-still">Alle als gelesen markieren</button>' : ""}
-    </div>
-    ${daten.meldungen.map((m) => `
-      <div class="meldung ${m.gelesen ? "gelesen" : "ungelesen"} art-${esc(m.art)}">
+  inhalt.innerHTML = `
+    <div class="abschnitt rise"><h2>Benachrichtigungen</h2><span class="fuellung"></span>
+      ${offen ? `<button id="alle" class="knopf-rand">Alle als gelesen markieren</button>` : ""}</div>
+    ${d.meldungen.map((m, i) => `
+      <div class="meldung art-${esc(m.art)} ${m.gelesen ? "gelesen" : ""} rise d${Math.min(6, (i % 6) + 1)}">
         <h3>${esc(m.titel)}</h3>
-        <div class="meta">
-          ${datumZeit(m.zeitpunkt)}${m.gewerk ? " · " + esc(zeigeGewerk(m.gewerk)) : ""}
-          ${m.gelesen ? "" : ' · <button class="knopf-still gelesen-knopf" data-id="' + m.id + '">als gelesen markieren</button>'}
+        <div class="zeile">
+          <span>${datumZeit(m.zeitpunkt)}</span>
+          ${m.gewerk ? `<span class="trenner">·</span><span>${esc(gw(m.gewerk).name)}</span>` : ""}
+          ${m.gelesen ? "" : `<span class="trenner">·</span>
+            <button class="knopf-klein gelesen" data-id="${m.id}">als gelesen markieren</button>`}
         </div>
-        ${m.beschreibung ? `<p class="rumpf">${textMitLinks(m.beschreibung)}</p>` : ""}
+        ${m.beschreibung ? `<p class="rumpf">${mitLinks(m.beschreibung)}</p>` : ""}
       </div>`).join("")}`;
 
-  $("#alle-gelesen")?.addEventListener("click", async () => {
+  $("#alle")?.addEventListener("click", () => gelesen({ alle: true }));
+  inhalt.querySelectorAll(".gelesen").forEach((b) =>
+    b.addEventListener("click", () => gelesen({ ids: [Number(b.dataset.id)] })));
+}
+
+async function gelesen(koerper) {
+  try {
     await hole("/api/meldungen/gelesen", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ alle: true }),
+      body: JSON.stringify(koerper),
     });
-    laden("meldungen");
-  });
-
-  ziel.querySelectorAll(".gelesen-knopf").forEach((b) =>
-    b.addEventListener("click", async () => {
-      await hole("/api/meldungen/gelesen", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids: [Number(b.dataset.id)] }),
-      });
-      laden("meldungen");
-    }));
+    zeige("meldungen");
+  } catch (e) { melden(e.message, "schlecht"); }
 }
 
-async function zeigeDokumente(ziel) {
-  const pfad = dokumentFilter
-    ? `/api/dokumente?gewerk=${encodeURIComponent(dokumentFilter)}`
-    : "/api/dokumente";
-  const daten = await hole(pfad);
+async function dokumente() {
+  const d = await hole(filter ? `/api/dokumente?gewerk=${encodeURIComponent(filter)}` : "/api/dokumente");
 
-  const zeilen = daten.dokumente.map((d) => {
-    const punkt = d.letzter_status ?? "keiner";
-    return `
-      <tr>
-        <td>
-          <span class="punkt ${punkt}"></span><strong>${esc(d.titel)}</strong>
-          ${d.herkunft === "manuell" ? ' <span class="freiwillig">(hochgeladen)</span>' : ""}
-          ${d.aktuelle_version_id && d.text_brauchbar === 0
-            ? `<div class="warnung" style="color:var(--rot);border-color:var(--rot)">Kein Text gewinnbar — Datei liegt vor, ist aber nicht durchsuchbar</div>` : ""}
-          ${d.hinweis ? `<div class="warnung">${esc(d.hinweis)}</div>` : ""}
-          ${d.letzter_fehler ? `<div class="warnung" style="color:var(--rot);border-color:var(--rot)">${esc(d.letzter_fehler)}</div>` : ""}
-        </td>
-        <td class="leise">${esc(zeigeGewerk(d.gewerk))}</td>
-        <td class="leise">${d.aktuelle_version_id ? datum(d.stand) : "— noch kein Inhalt —"}</td>
-        <td class="leise">${d.gueltig_ab ? datum(d.gueltig_ab) : "—"}</td>
-        <td class="leise">${d.quelle_url
-          ? `<a href="${esc(d.quelle_url)}" target="_blank" rel="noopener">Quelle</a>` : "—"}</td>
-      </tr>`;
-  }).join("");
-
-  ziel.innerHTML = `
-    <div class="kopfreihe">
-      <h2>Dokumente${dokumentFilter ? " — " + esc(zeigeGewerk(dokumentFilter)) : ""}</h2>
-      ${dokumentFilter ? '<button id="filter-weg" class="knopf-still">Alle Gewerke</button>' : ""}
+  inhalt.innerHTML = `
+    <div class="abschnitt rise">
+      <h2>Dokumente${filter ? " · " + esc(gw(filter).name) : ""}</h2>
+      <span class="fuellung"></span>
+      ${filter ? `<button id="alleG" class="knopf-rand">Alle Gewerke</button>` : ""}
     </div>
-    <div class="karte">
-      <div class="tabelle-huelle">
-        <table>
-          <thead><tr>
-            <th>Dokument</th><th>Gewerk</th><th>Stand</th><th>Gültig ab</th><th>Original</th>
-          </tr></thead>
-          <tbody>${zeilen || '<tr><td colspan="5" class="leer">Keine Dokumente.</td></tr>'}</tbody>
-        </table>
+    <div class="karte rise d1" style="padding:4px 26px 6px">
+      <div class="zeilen" style="border-top:0">
+        ${d.dokumente.map((x) => zeileDokument(x)).join("") ||
+          `<p class="leer">Keine Dokumente.</p>`}
       </div>
-      <p class="erklaerung klein">
-        Die Texte werden hier nicht zum Download angeboten — sie liegen für den MCP bereit.
-        „Original" führt zur Quelle beim Herausgeber.
-      </p>
-    </div>`;
+    </div>
+    <p class="meta rise d2" style="margin-top:14px">
+      Die Texte liegen für den MCP bereit, nicht zum Herunterladen. „Quelle" führt zum
+      Herausgeber.
+    </p>`;
 
-  $("#filter-weg")?.addEventListener("click", () => { dokumentFilter = null; laden("dokumente"); });
+  $("#alleG")?.addEventListener("click", () => { filter = null; zeige("dokumente"); });
 }
 
-async function zeigeQuellen(ziel) {
-  const daten = await hole("/api/quellen");
+function zeileDokument(x) {
+  const ohneText = x.aktuelle_version_id && x.text_brauchbar === 0;
+  const fahnen = [
+    x.herkunft === "manuell" ? `<span class="fahne">hochgeladen</span>` : "",
+    x.quelle_typ === "watch" ? `<span class="fahne">beobachtete Seite</span>` : "",
+    ohneText ? `<span class="fahne rot">kein Text gewinnbar</span>` : "",
+    x.letzter_status === "fehler" ? `<span class="fahne rot">Abruf gescheitert</span>` : "",
+    !x.aktuelle_version_id ? `<span class="fahne warn">noch kein Inhalt</span>` : "",
+  ].filter(Boolean).join("");
 
-  const zeilen = daten.quellen.map((q) => `
-    <tr>
-      <td>
-        <span class="punkt ${q.letzter_status ?? "keiner"}"></span><strong>${esc(q.kuerzel)}</strong>
-        <div class="leise" style="font-size:12px">${esc(zeigeGewerk(q.gewerk))} · ${esc(q.firmen)}</div>
-        ${q.letzter_fehler
-          ? `<div class="warnung" style="color:var(--rot);border-color:var(--rot)">${esc(q.letzter_fehler)}</div>`
-          : ""}
-      </td>
-      <td class="leise">${q.typ === "watch" ? "beobachtet" : "Download"}</td>
-      <td>
-        <input type="url" value="${esc(q.url)}" data-quelle="${esc(q.id)}"
-               style="width:100%;min-width:240px;font-size:12px">
-      </td>
-      <td>
-        <button class="knopf-still speichern" data-quelle="${esc(q.id)}">Speichern</button>
-      </td>
-    </tr>`).join("");
+  return `<div class="dok">
+    ${marke(x.gewerk)}
+    <div class="haupt">
+      <div class="titel">${esc(x.titel)}</div>
+      <div class="unter">
+        <span>${esc(gw(x.gewerk).name)}</span>
+        ${x.gueltig_ab ? `<span class="trenner">·</span><span>gültig ab ${datum(x.gueltig_ab)}</span>` : ""}
+        ${x.quelle_url ? `<span class="trenner">·</span>
+          <a href="${esc(x.quelle_url)}" target="_blank" rel="noopener"
+             style="text-decoration:underline;text-underline-offset:2px">Quelle</a>` : ""}
+      </div>
+      ${fahnen ? `<div class="unter" style="margin-top:7px">${fahnen}</div>` : ""}
+    </div>
+    <div class="rechts">${x.aktuelle_version_id ? datum(x.stand) : "—"}</div>
+  </div>`;
+}
 
-  ziel.innerHTML = `
-    <div class="kopfreihe"><h2>Quellen</h2></div>
-    <div class="karte">
-      <p class="erklaerung">
-        Baut ein Herausgeber seine Seite um, geht der Link ins Leere und der Abruf meldet
-        einen Fehler. Dann hier die Adresse korrigieren.
-      </p>
-      <div class="tabelle-huelle">
-        <table>
-          <thead><tr><th>Kürzel</th><th>Art</th><th>Adresse</th><th></th></tr></thead>
-          <tbody>${zeilen}</tbody>
-        </table>
+async function quellen() {
+  const d = await hole("/api/quellen");
+
+  inhalt.innerHTML = `
+    <div class="abschnitt rise"><h2>Quellen</h2></div>
+    <div class="notiz rise d1" style="margin-bottom:16px">
+      Baut ein Herausgeber seine Seite um, geht der Link ins Leere und der Abruf meldet
+      einen Fehler. Dann hier die Adresse korrigieren.
+    </div>
+    <div class="karte rise d2" style="padding:4px 26px 6px">
+      <div class="zeilen" style="border-top:0">
+        ${d.quellen.map((q) => `
+          <div class="dok">
+            ${marke(q.gewerk)}
+            <div class="haupt">
+              <div class="titel">${esc(q.kuerzel)}
+                <span class="fahne" style="margin-left:6px">${q.typ === "watch" ? "beobachtet" : "Download"}</span></div>
+              <div class="unter"><span>${esc(gw(q.gewerk).name)}</span>
+                <span class="trenner">·</span><span>${esc(q.firmen)}</span></div>
+              ${q.letzter_fehler ? `<div class="unter" style="margin-top:7px">
+                <span class="fahne rot">${esc(q.letzter_fehler.slice(0, 90))}</span></div>` : ""}
+              <div style="display:flex;gap:8px;margin-top:10px">
+                <input class="feld" type="url" value="${esc(q.url)}" data-q="${esc(q.id)}"
+                       style="font-size:13px;padding:8px 11px">
+                <button class="knopf-rand sichern" data-q="${esc(q.id)}">Sichern</button>
+              </div>
+            </div>
+          </div>`).join("")}
       </div>
     </div>`;
 
-  ziel.querySelectorAll(".speichern").forEach((b) =>
+  inhalt.querySelectorAll(".sichern").forEach((b) =>
     b.addEventListener("click", async () => {
-      const id = b.dataset.quelle;
-      const feld = ziel.querySelector(`input[data-quelle="${CSS.escape(id)}"]`);
+      const id = b.dataset.q;
+      const feld = inhalt.querySelector(`input[data-q="${CSS.escape(id)}"]`);
       b.disabled = true;
       try {
         await hole(`/api/quellen/${encodeURIComponent(id)}`, {
@@ -259,74 +276,98 @@ async function zeigeQuellen(ziel) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ url: feld.value }),
         });
-        hinweis(`Adresse für ${id} gespeichert.`, "gut");
-      } catch (e) {
-        hinweis(e.message, "schlecht");
-      } finally {
-        b.disabled = false;
-      }
+        melden(`Adresse für ${id} gespeichert.`, "gut");
+      } catch (e) { melden(e.message, "schlecht"); }
+      finally { b.disabled = false; }
     }));
 }
 
-function ungelesenSetzen(anzahl) {
-  const p = $("#ungelesen-zahl");
-  p.textContent = anzahl;
-  p.hidden = !anzahl;
+async function hochladen() {
+  inhalt.innerHTML = `
+    <div class="abschnitt rise"><h2>Dokument hochladen</h2></div>
+    <div class="karte rise d1">
+      <p class="meta" style="margin-bottom:18px;max-width:56ch">
+        Für alles, was es nicht frei im Netz gibt — Tischlerhandwerk und den Lohn-Tarifvertrag
+        Gerüstbau. Die Datei wird genauso in Text überführt wie die automatisch geholten und
+        steht danach gleichwertig zur Verfügung.
+      </p>
+      <form id="up">
+        <label>Datei
+          <input class="feld" type="file" name="datei" required
+                 accept=".pdf,.docx,.doc,.html,.htm,.txt,.md,.png,.jpg,.jpeg"></label>
+        <label>Gewerk
+          <select class="feld" name="gewerk" required>
+            <option value="">— bitte wählen —</option>
+            ${Object.entries(GEWERKE).map(([k, v]) =>
+              `<option value="${k}">${v.name}</option>`).join("")}
+          </select></label>
+        <label>Titel
+          <input class="feld" type="text" name="titel" required
+                 placeholder="z. B. Manteltarifvertrag Tischlerhandwerk Nord"></label>
+        <label>Gültig ab <span class="freiwillig">— freiwillig, aber hilfreich</span>
+          <input class="feld" type="date" name="gueltig_ab"></label>
+        <button type="submit" class="knopf" style="justify-self:start">Hochladen</button>
+      </form>
+      <p class="meta" style="margin-top:18px;font-size:.86rem;max-width:56ch">
+        Das Gültigkeitsdatum wird bewusst nicht aus dem Dokument geraten. Was hier steht,
+        gibt der MCP später mit aus — lieber leer als falsch.
+      </p>
+    </div>`;
+
+  $("#up").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const knopf = form.querySelector("button");
+    knopf.disabled = true;
+    knopf.textContent = "Wird verarbeitet …";
+    try {
+      const antwort = await fetch("/api/upload", { method: "POST", body: new FormData(form) });
+      const daten = await antwort.json();
+      if (!antwort.ok) throw new Error(daten.fehler || `Fehler ${antwort.status}`);
+      melden(daten.warnung
+        ? `Hochgeladen — aber: ${daten.warnung}`
+        : "Hochgeladen und durchsuchbar gemacht.", daten.warnung ? "schlecht" : "gut");
+      form.reset();
+    } catch (err) { melden(err.message, "schlecht"); }
+    finally { knopf.disabled = false; knopf.textContent = "Hochladen"; }
+  });
 }
 
-// ——— Verdrahtung ————————————————————————————————————————————
+function zaehlerSetzen(n) {
+  const z = $("#zaehler");
+  z.textContent = n;
+  z.hidden = !n;
+}
 
+/* ── Verdrahtung ────────────────────────────────────────────────────────── */
 document.querySelectorAll("nav button").forEach((b) =>
   b.addEventListener("click", () => {
-    if (b.dataset.ansicht === "dokumente" && aktuelleAnsicht !== "dokumente") {
-      dokumentFilter = null;
-    }
-    wechsle(b.dataset.ansicht);
+    if (b.dataset.ansicht === "dokumente" && aktuell !== "dokumente") filter = null;
+    zeige(b.dataset.ansicht);
   }));
 
-$("#jetzt-pruefen").addEventListener("click", async (e) => {
-  const knopf = e.currentTarget;
-  knopf.disabled = true;
-  knopf.textContent = "Läuft …";
-  hinweis("Alle Quellen werden abgerufen. Das dauert einen Moment.");
+$("#pruefen").addEventListener("click", async (e) => {
+  const k = e.currentTarget;
+  k.disabled = true;
+  k.textContent = "Läuft …";
+  melden("Alle Quellen werden abgerufen. Das dauert einen Moment.");
   try {
     const { ergebnisse } = await hole("/api/sync", { method: "POST" });
-    const geaendert = ergebnisse.filter((r) => r.status === "ok").length;
+    const neu = ergebnisse.filter((r) => r.status === "ok").length;
     const kaputt = ergebnisse.filter((r) => r.status === "fehler").length;
-    hinweis(
-      `${ergebnisse.length} Quellen geprüft — ${geaendert} mit Änderung, ` +
-      `${kaputt} fehlgeschlagen.`,
-      kaputt ? "schlecht" : "gut",
-    );
-    laden(aktuelleAnsicht);
-  } catch (err) {
-    hinweis(err.message, "schlecht");
-  } finally {
-    knopf.disabled = false;
-    knopf.textContent = "Jetzt prüfen";
-  }
+    melden(`${ergebnisse.length} Quellen geprüft — ${neu} mit Änderung, ${kaputt} fehlgeschlagen.`,
+      kaputt ? "schlecht" : "gut");
+    zeige(aktuell);
+  } catch (err) { melden(err.message, "schlecht"); }
+  finally { k.disabled = false; k.textContent = "Jetzt prüfen"; }
 });
 
-$("#upload-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = e.currentTarget;
-  const knopf = form.querySelector("button");
-  knopf.disabled = true;
-  knopf.textContent = "Wird umgewandelt …";
-  try {
-    const antwort = await fetch("/api/upload", { method: "POST", body: new FormData(form) });
-    const daten = await antwort.json();
-    if (!antwort.ok) throw new Error(daten.fehler || `Fehler ${antwort.status}`);
-    hinweis("Hochgeladen und in Text umgewandelt. Es steht jetzt zur Verfügung.", "gut");
-    form.reset();
-  } catch (err) {
-    hinweis(err.message, "schlecht");
-  } finally {
-    knopf.disabled = false;
-    knopf.textContent = "Hochladen";
-  }
-});
+(function kopfSchatten() {
+  const h = document.querySelector("header");
+  const f = () => h.classList.toggle("stuck", window.scrollY > 6);
+  f();
+  window.addEventListener("scroll", f, { passive: true });
+})();
 
-// Ungelesen-Zähler stimmt auch, wenn man auf einer anderen Ansicht startet.
-hole("/api/uebersicht").then((d) => ungelesenSetzen(d.ungelesen)).catch(() => {});
-wechsle("uebersicht");
+hole("/api/uebersicht").then((d) => zaehlerSetzen(d.ungelesen)).catch(() => {});
+zeige("uebersicht");

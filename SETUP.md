@@ -2,11 +2,14 @@
 
 **Die Seite läuft bereits:** <https://tarifcheck.ksqsebastian.workers.dev>
 
-Alle 17 Quellen sind abgerufen, der tägliche Lauf ist auf 06:15 UTC gestellt. Was noch
-fehlt, ist die Anmeldung — Schritte 3 und 5. **Bis dahin sind alle schreibenden Zugriffe
-gesperrt** (Hochladen, Quellen ändern, Prüfung anstoßen); Lesen ist offen.
+Alle 17 Verträge sind abgerufen und durchsuchbar, der tägliche Lauf ist auf 06:15 UTC
+gestellt. Was noch fehlt, ist die Anmeldung — Schritte 3 und 5. **Bis dahin sind alle
+schreibenden Zugriffe gesperrt** (Hochladen, Quellen ändern, Prüfung anstoßen); Lesen ist
+offen.
 
-Alles läuft im kostenlosen Cloudflare-Tarif.
+Kosten: **Workers Paid, 5 $/Monat** fürs ganze Konto. Nötig, weil der Text mit pdf.js
+gewonnen wird — die Begründung steht in `PLAN.md`, Abschnitt 4. Alles Übrige (R2, D1, KV,
+Workers AI) liegt im kostenlosen Rahmen.
 
 ```bash
 npm install
@@ -26,19 +29,8 @@ npx wrangler login
 
 Das Schema liegt schon auf der Datenbank, `npm run migrate` läuft also als No-op durch.
 
-**R2 fehlt noch und muss von dir freigeschaltet werden.** Die API lehnt das Anlegen mit
-*„Please enable R2 through the Cloudflare Dashboard"* ab — R2 ist einmalig pro Konto zu
-aktivieren, und dafür verlangt Cloudflare eine hinterlegte Zahlungsmethode, auch wenn der
-kostenlose Rahmen (10 GB) hier bei weitem reicht.
-
-1. Im Dashboard auf **R2 → Get started / Purchase R2** und die Aktivierung bestätigen
-2. Dann:
-
-```bash
-npx wrangler r2 bucket create tarifcheck
-```
-
-Der Bucket wird über den Namen angesprochen, es ist nichts einzutragen.
+Der R2-Bucket `tarifcheck` ist ebenfalls angelegt. Er wird über den Namen angesprochen,
+es ist nichts einzutragen.
 
 ## 2. Quellen einspielen
 
@@ -191,27 +183,16 @@ Den MCP ohne Claude prüfen:
 npx @modelcontextprotocol/inspector
 ```
 
-## 8. Bekannte Lücken im Bestand
+## 8. Nach dem ersten echten Lauf
 
-Drei PDFs liefern keinen Text, weil sie Scans ohne Texterkennung sind. Die Dateien liegen
-vor, sind aber nicht durchsuchbar. Die Seite zeigt sie rot, und der MCP weist bei jeder
-Auskunft darauf hin, statt so zu tun, als wäre der Vertrag da:
+- **Rechenzeit** unter Workers → tarifcheck → Metrics. `limits.cpu_ms` steht auf 120.000
+  als Obergrenze; verbraucht wird nur, wenn sich ein Vertrag wirklich geändert hat. Der
+  BRTV kostet dabei rund 1,3 Sekunden, alle anderen deutlich weniger.
+- **KI-Kontingent** unter AI → Workers AI. Wird nur noch für die drei beobachteten
+  HTML-Seiten gebraucht, nicht mehr für PDFs. 10.000 Neuronen pro Tag sind frei — das
+  reicht um Größenordnungen.
 
-| Dokument | Ausweg |
-|---|---|
-| Bundesrahmentarifvertrag Bau (SOKA-BAU) | Die **Zoll-Fassung** desselben Vertrags ist vollständig lesbar — als `bau-brtv-zoll` bereits im Bestand |
-| 9. GerüstbauerArbbV (Zoll) | Die Fassung von *Gesetze im Internet* ist lesbar — als `geruestbau-arbbv-gii` im Bestand |
-| 12. MalerArbbV (Zoll) | Bisher keine lesbare Quelle. Bei Bedarf eine durchsuchbare Fassung hochladen |
-
-## 9. Nach dem ersten echten Lauf
-
-- **Rechenzeit** unter Workers → tarifcheck → Metrics. Der kostenlose Tarif erlaubt 10 ms
-  pro Aufruf. Liegt der Wert dicht darunter, in `wrangler.jsonc` die auskommentierte Zeile
-  `"limits": { "cpu_ms": 30000 }` aktivieren — das setzt Workers Paid voraus (5 $/Monat).
-- **KI-Kontingent** unter AI → Workers AI. 10.000 Neuronen pro Tag sind frei. Umgewandelt
-  wird nur, was sich geändert hat.
-
-## 10. Betrieb
+## 9. Betrieb
 
 **Neue Quelle:** Zeile in `data/tarif-quellen.tsv` ergänzen, `npm run seed`.
 
