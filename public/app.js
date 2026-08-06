@@ -85,8 +85,25 @@ function melden(text, art = "") {
   l.className = art;
   l.hidden = false;
   clearTimeout(leisteTimer);
-  if (art !== "schlecht") leisteTimer = setTimeout(() => (l.hidden = true), 6000);
+  // Auch Fehler verschwinden wieder. Eine Leiste, die stehen bleibt, wird
+  // nach dem zweiten Blick zur Tapete und verdeckt trotzdem den Inhalt.
+  leisteTimer = setTimeout(() => (l.hidden = true), art === "schlecht" ? 12000 : 6000);
 }
+
+/* Was die Seite anbieten darf. Wird einmal beim Start geholt.
+   Solange Access nicht eingerichtet ist, sind schreibende Zugriffe gesperrt —
+   dann werden die entsprechenden Knöpfe gar nicht erst gezeigt, statt sie
+   anzubieten und beim Druck mit einem Fehler zu antworten. */
+let darf = { schreiben: false, access_eingerichtet: false, angemeldet: null };
+
+const gesperrtHinweis = () => darf.schreiben ? "" : `
+  <div class="notiz rise" style="margin-bottom:18px">
+    <b>Nur Lesezugriff.</b> ${darf.access_eingerichtet
+      ? "Du bist an dieser Adresse nicht angemeldet."
+      : "Die Anmeldung über Cloudflare Access ist noch nicht eingerichtet."}
+    Hochladen, Quellen ändern und das Anstoßen einer Prüfung bleiben deshalb gesperrt.
+    Der tägliche Abruf um 06:15 läuft davon unberührt weiter.
+  </div>`;
 
 /* ── Ansichten ──────────────────────────────────────────────────────────── */
 let aktuell = "uebersicht";
@@ -116,6 +133,7 @@ async function uebersicht() {
   }
 
   inhalt.innerHTML = `
+    ${gesperrtHinweis()}
     <div class="abschnitt rise"><h2>Stand je Gewerk</h2><span class="fuellung"></span>
       <span class="meta">${d.gewerke.reduce((n, g) => n + g.dokumente, 0)} Dokumente</span></div>
     <div class="gitter">
@@ -155,14 +173,15 @@ async function meldungen() {
 
   inhalt.innerHTML = `
     <div class="abschnitt rise"><h2>Benachrichtigungen</h2><span class="fuellung"></span>
-      ${offen ? `<button id="alle" class="knopf-rand">Alle als gelesen markieren</button>` : ""}</div>
+      ${offen && darf.schreiben
+        ? `<button id="alle" class="knopf-rand">Alle als gelesen markieren</button>` : ""}</div>
     ${d.meldungen.map((m, i) => `
       <div class="meldung art-${esc(m.art)} ${m.gelesen ? "gelesen" : ""} rise d${Math.min(6, (i % 6) + 1)}">
         <h3>${esc(m.titel)}</h3>
         <div class="zeile">
           <span>${datumZeit(m.zeitpunkt)}</span>
           ${m.gewerk ? `<span class="trenner">·</span><span>${esc(gw(m.gewerk).name)}</span>` : ""}
-          ${m.gelesen ? "" : `<span class="trenner">·</span>
+          ${m.gelesen || !darf.schreiben ? "" : `<span class="trenner">·</span>
             <button class="knopf-klein gelesen" data-id="${m.id}">als gelesen markieren</button>`}
         </div>
         ${m.beschreibung ? `<p class="rumpf">${mitLinks(m.beschreibung)}</p>` : ""}
@@ -238,6 +257,7 @@ async function quellen() {
   const d = await hole("/api/quellen");
 
   inhalt.innerHTML = `
+    ${gesperrtHinweis()}
     <div class="abschnitt rise"><h2>Quellen</h2></div>
     <div class="notiz rise d1" style="margin-bottom:16px">
       Baut ein Herausgeber seine Seite um, geht der Link ins Leere und der Abruf meldet
@@ -257,8 +277,9 @@ async function quellen() {
                 <span class="fahne rot">${esc(q.letzter_fehler.slice(0, 90))}</span></div>` : ""}
               <div style="display:flex;gap:8px;margin-top:10px">
                 <input class="feld" type="url" value="${esc(q.url)}" data-q="${esc(q.id)}"
-                       style="font-size:13px;padding:8px 11px">
-                <button class="knopf-rand sichern" data-q="${esc(q.id)}">Sichern</button>
+                       style="font-size:13px;padding:8px 11px" ${darf.schreiben ? "" : "readonly"}>
+                ${darf.schreiben
+                  ? `<button class="knopf-rand sichern" data-q="${esc(q.id)}">Sichern</button>` : ""}
               </div>
             </div>
           </div>`).join("")}
@@ -283,6 +304,19 @@ async function quellen() {
 }
 
 async function hochladen() {
+  if (!darf.schreiben) {
+    inhalt.innerHTML = `
+      <div class="abschnitt rise"><h2>Dokument hochladen</h2></div>
+      ${gesperrtHinweis()}
+      <div class="karte rise d1">
+        <p class="meta" style="max-width:56ch">
+          Sobald die Anmeldung steht, kannst du hier Verträge hochladen, für die es keine
+          öffentliche Quelle gibt — Tischlerhandwerk und den Lohn-Tarifvertrag Gerüstbau.
+          Die Einrichtung ist in <b>SETUP.md</b> beschrieben, Schritte 3 und 5.
+        </p>
+      </div>`;
+    return;
+  }
   inhalt.innerHTML = `
     <div class="abschnitt rise"><h2>Dokument hochladen</h2></div>
     <div class="karte rise d1">
@@ -369,5 +403,9 @@ $("#pruefen").addEventListener("click", async (e) => {
   window.addEventListener("scroll", f, { passive: true });
 })();
 
-hole("/api/uebersicht").then((d) => zaehlerSetzen(d.ungelesen)).catch(() => {});
-zeige("uebersicht");
+(async function start() {
+  try { darf = await hole("/api/status"); } catch { /* Standard bleibt: nur lesen */ }
+  $("#pruefen").hidden = !darf.schreiben;
+  hole("/api/uebersicht").then((d) => zaehlerSetzen(d.ungelesen)).catch(() => {});
+  zeige("uebersicht");
+})();

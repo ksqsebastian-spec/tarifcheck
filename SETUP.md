@@ -2,6 +2,10 @@
 
 **Die Seite läuft bereits:** <https://tarifcheck.ksqsebastian.workers.dev>
 
+Solange die Anmeldung fehlt, läuft sie im **Lesemodus**: die Seite sagt das oben in einem
+Hinweis und zeigt schreibende Knöpfe gar nicht erst an. Der tägliche Abruf um 06:15 UTC
+läuft davon unberührt.
+
 Alle 17 Verträge sind abgerufen und durchsuchbar, der tägliche Lauf ist auf 06:15 UTC
 gestellt. Was noch fehlt, ist die Anmeldung — Schritte 3 und 5. **Bis dahin sind alle
 schreibenden Zugriffe gesperrt** (Hochladen, Quellen ändern, Prüfung anstoßen); Lesen ist

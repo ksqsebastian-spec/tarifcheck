@@ -346,6 +346,22 @@ export async function apiRouten(
 
   if (p === "/api/quellen" && m === "GET") return quellen(env);
 
+  /**
+   * Sagt der Oberflaeche, was sie anbieten darf.
+   *
+   * Ohne das zeigt die Seite Knoepfe, die nicht funktionieren koennen, und
+   * antwortet auf jeden Druck mit einer roten Fehlermeldung - fuer einen
+   * Zustand, der voellig erwartbar ist, solange Access noch nicht steht.
+   */
+  if (p === "/api/status" && m === "GET") {
+    const wer = await angemeldeteAdresse(request, env);
+    return json({
+      angemeldet: wer,
+      schreiben: Boolean(wer),
+      access_eingerichtet: Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD),
+    });
+  }
+
   // Ab hier wird geschrieben. Ohne gueltiges Access-Token geht nichts.
   const schreiben = await angemeldeteAdresse(request, env);
   if (!schreiben) return abgelehnt();
