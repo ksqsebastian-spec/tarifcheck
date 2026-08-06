@@ -53,6 +53,18 @@ export class SyncEntrypoint extends WorkerEntrypoint<Env> {
   quelleAbrufen(quelleId: string) {
     return quelleAbrufen(this.env, quelleId);
   }
+
+  /**
+   * Antwortet, ohne etwas zu tun.
+   *
+   * Damit laesst sich pruefen, ob die Selbstbindung wirklich traegt - und
+   * nicht nur richtig konfiguriert aussieht. Ohne sie faende der taegliche
+   * Lauf keine Quelle mehr und wuerde stillschweigend nichts tun. Genau die
+   * Sorte Fehler, die man erst Wochen spaeter am veralteten Stand bemerkt.
+   */
+  bereit(): string {
+    return "ok";
+  }
 }
 
 /**

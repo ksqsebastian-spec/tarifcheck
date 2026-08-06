@@ -353,6 +353,46 @@ export async function apiRouten(
    * antwortet auf jeden Druck mit einer roten Fehlermeldung - fuer einen
    * Zustand, der voellig erwartbar ist, solange Access noch nicht steht.
    */
+  /**
+   * Laeuft der Dienst noch? Oeffentlich und ohne Nebenwirkung.
+   *
+   * Prueft nicht bloss, ob der Worker antwortet - das tut er auch, wenn der
+   * taegliche Lauf laengst nichts mehr bewirkt. Geprueft wird die
+   * Selbstbindung, ueber die der Cron seine Arbeit verteilt, und wann zuletzt
+   * wirklich etwas abgerufen wurde.
+   */
+  if (p === "/api/gesundheit" && m === "GET") {
+    let selbstbindung = "fehler";
+    try {
+      selbstbindung = (await env.SELF.bereit()) === "ok" ? "ok" : "unerwartete Antwort";
+    } catch (e) {
+      selbstbindung = `fehler: ${e instanceof Error ? e.message : String(e)}`;
+    }
+
+    const stand = await env.DB.prepare(
+      `SELECT MAX(d.letzte_pruefung) AS zuletzt_geprueft,
+              COUNT(*) AS dokumente,
+              SUM(CASE WHEN v.text_brauchbar = 1 THEN 1 ELSE 0 END) AS durchsuchbar,
+              SUM(CASE WHEN d.letzter_status = 'fehler' THEN 1 ELSE 0 END) AS fehler
+         FROM dokumente d LEFT JOIN versionen v ON v.id = d.aktuelle_version_id`,
+    ).first<Record<string, number | string | null>>();
+
+    const zuletzt = stand?.zuletzt_geprueft as string | null;
+    const stundenHer = zuletzt
+      ? Math.round((Date.now() - new Date(zuletzt).getTime()) / 3600_000)
+      : null;
+
+    return json({
+      selbstbindung,
+      cron: "15 6 * * * (UTC)",
+      zuletzt_geprueft: zuletzt,
+      stunden_seit_pruefung: stundenHer,
+      // Nach 36 Stunden ohne Abruf ist ein taeglicher Lauf sicher ausgefallen.
+      lauf_ueberfaellig: stundenHer !== null && stundenHer > 36,
+      ...stand,
+    });
+  }
+
   if (p === "/api/status" && m === "GET") {
     const wer = await angemeldeteAdresse(request, env);
     return json({
