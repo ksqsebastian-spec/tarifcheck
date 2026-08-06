@@ -9,7 +9,7 @@ Nachfolger von `tarif-sync.sh` — ohne Rechner, der durchlaufen muss.
 |---|---|
 | Was gebaut wird und warum | [`PLAN.md`](PLAN.md) |
 | Einrichten und betreiben | [`SETUP.md`](SETUP.md) |
-| Schnittstelle für den MCP im `mcpee`-Repo | [`MCP-CONTRACT.md`](MCP-CONTRACT.md) |
+| Wie die Daten liegen | [`DATENMODELL.md`](DATENMODELL.md) |
 
 ## Kurz
 
@@ -18,8 +18,17 @@ den Sozialkassen, erkennt Änderungen, hebt jede Fassung auf und wandelt sie in 
 Auf der Seite sieht man den Stand je Gewerk und bekommt Änderungen als Benachrichtigung.
 Dokumente ohne öffentliche Quelle lädt man dort von Hand hoch.
 
-Der MCP-Server wird **nicht hier** gebaut, sondern im `mcpee`-Repo. Er hängt sich an
-dieselbe Datenbank und denselben Speicher — wie, steht in `MCP-CONTRACT.md`.
+Ein MCP-Server im selben Worker macht den Bestand für Claude nutzbar — angemeldet über
+Cloudflare Access. Danach beantwortet Claude Fragen wie „was ist neu bei den Tischlern"
+direkt aus den Verträgen, mit Stand und Gültigkeitsdatum dazu.
+
+## Werkzeuge des MCP
+
+`gewerke_auflisten` · `dokumente_auflisten` · `dokument_lesen` · `was_ist_neu` ·
+`tarife_durchsuchen` · `versionen_auflisten`
+
+Jede Antwort führt die Vorbehalte des Dokuments mit — ob eine amtliche Fassung vorliegt,
+von wann sie ist, und ob der letzte Abruf überhaupt geklappt hat.
 
 ## Die Einschränkung, die bleibt
 

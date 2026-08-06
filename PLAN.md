@@ -4,8 +4,8 @@ Tarifvertrags-Seite auf Cloudflare. Hält die Tarifverträge aller Gruppenwerk-G
 automatisch aktuell, meldet Änderungen auf der Seite und legt alles so ab, dass ein
 separater MCP-Server es lesen kann.
 
-**Der MCP wird nicht hier gebaut.** Er kommt ins bestehende `mcpee`-Repo. Dieses Repo
-liefert die Daten und den Vertrag darüber — siehe `MCP-CONTRACT.md`.
+Seite und MCP-Server stecken im selben Worker. Wie die Daten liegen, auf denen beide
+arbeiten, steht in `DATENMODELL.md`.
 
 ---
 
@@ -65,13 +65,13 @@ Ein Worker. Vorne die Seite, hinten der tägliche Abruf.
                                              │
   Browser ─Access─▶ Seite (Assets + JSON)────┘
 
-  ── später, aus dem mcpee-Repo ──
-  Claude ─OAuth─▶ MCP-Worker ─▶ dieselbe D1 + dasselbe R2
+  Claude ─OAuth─▶ /mcp  ─▶ dieselbe D1 + dasselbe R2
 ```
 
-Der MCP-Worker hängt sich per Binding an dieselbe Datenbank und denselben Bucket. Das
-geht innerhalb eines Cloudflare-Kontos direkt, ohne Schnittstelle und ohne Schlüssel
-dazwischen. Er liest nur.
+Der MCP-Endpunkt liegt im selben Worker, liest aber nur. Die Anmeldung ist eine andere
+als die der Seite: Claude meldet sich per Dynamic Client Registration an, das kennt
+Cloudflare Access nicht. Also stellt der Worker eigene Tokens aus und benutzt Access als
+Anmeldeverfahren dahinter.
 
 ### Bindings dieses Workers
 
@@ -81,8 +81,10 @@ dazwischen. Er liest nur.
 | `DB` | D1 `tarifcheck` | Quellen, Dokumente, Versionen, Meldungen |
 | `AI` | Workers AI | `toMarkdown()` für die Textumwandlung |
 | `ASSETS` | Static Assets | die Seite |
+| `OAUTH_KV` | KV | Tokens und Grants des MCP |
 
-Kein KV, keine Durable Objects, keine Queues — nichts davon wird ohne MCP hier gebraucht.
+Keine Durable Objects und keine Queues: der MCP-Handler ist zustandslos, und Queues gibt
+es im kostenlosen Tarif nicht.
 
 ---
 
@@ -120,8 +122,7 @@ unkritisch — den Zähler sollte man in der ersten Woche trotzdem anschauen.
 
 ## 5. Daten
 
-Schema und Ablage sind in **`MCP-CONTRACT.md`** festgeschrieben, weil der andere Chat
-genau darauf baut. Kurzfassung:
+Schema und Ablage sind in **`DATENMODELL.md`** festgeschrieben. Kurzfassung:
 
 - `quellen` — die gepflegte Liste, kommt aus `data/tarif-quellen.tsv`
 - `dokumente` — ein Vertrag, entweder automatisch geholt oder hochgeladen
@@ -164,15 +165,17 @@ auszuschließen — sieht man das sofort, statt es in einem Logfile zu verpassen
 ```
 tarifcheck/
 ├─ wrangler.jsonc              Bindings, Cron, Assets
-├─ MCP-CONTRACT.md             Vertrag für das mcpee-Repo
+├─ DATENMODELL.md              Schema, Ablage, Abfragen
 ├─ SETUP.md                    Befehle zum Einrichten und Deployen
 ├─ data/tarif-quellen.tsv      Quellenliste
 ├─ migrations/0001_init.sql    Schema samt Volltextindex
 ├─ scripts/seed-sources.mjs    TSV → SQL
 ├─ src/
-│  ├─ index.ts                 Routing, fetch + scheduled
+│  ├─ index.ts                 Routing, OAuth-Provider, fetch + scheduled
 │  ├─ sync/                    Abruf, Textumwandlung
 │  ├─ api/                     JSON für die Seite
+│  ├─ auth/                    Anmeldung des MCP gegen Cloudflare Access
+│  ├─ mcp/                     MCP-Server und seine Werkzeuge
 │  └─ lib/                     Datenbank, Speicher, Hilfen
 └─ public/                     die Seite selbst
 ```

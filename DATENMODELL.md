@@ -1,40 +1,25 @@
-# Vertrag für den MCP-Server
+# Datenmodell
 
-Dieses Dokument beschreibt, wie der MCP-Server im **`mcpee`-Repo** an die Daten von
-Tarifcheck kommt. Es ist die Schnittstelle zwischen beiden Repos — ändert sich hier etwas,
-bricht dort etwas.
+Wie die Daten liegen, auf denen Seite und MCP-Server arbeiten. Beide stecken in diesem
+Repo; dieses Dokument beschreibt den Vertrag zwischen ihnen.
 
-Der MCP-Server wird **nicht** in diesem Repo gebaut.
+Nützlich außerdem, falls der MCP-Server später doch in ein anderes Repo umziehen soll —
+er würde dort als eigener Worker dieselbe D1 und dasselbe R2 binden. Wie das geht, steht
+in Abschnitt 1.
 
 ---
 
-## 1. Wie die Verbindung läuft
+## 1. Zugriff aus einem anderen Worker
 
-Der MCP-Worker ist ein eigener Worker im selben Cloudflare-Konto und hängt sich per
-Binding **direkt an dieselbe D1-Datenbank und denselben R2-Bucket**. Es gibt keine
-HTTP-Schnittstelle dazwischen, keinen API-Schlüssel und kein gemeinsames Geheimnis.
-Zwei Worker dürfen dieselbe Datenbank und denselben Bucket binden.
-
-```
-Claude ──OAuth──▶ MCP-Worker (mcpee) ──┐
-                                       ├──▶ D1  tarifcheck
-Browser ─Access─▶ Tarifcheck-Worker ────┘──▶ R2  tarifcheck
-```
-
-**Der MCP-Server liest nur.** Schreiben ist Sache der Seite. Der Grund ist nicht Vorsicht,
-sondern Zuständigkeit: die Änderungserkennung hängt an Prüfsummen, die beim Schreiben
-entstehen. Ein zweiter Schreiber würde sie unbemerkt entwerten.
-
-### In der `wrangler.jsonc` des mcpee-Repos
+Zwei Worker dürfen dieselbe Datenbank und denselben Bucket binden — auch aus einem anderen
+Repo, solange es dasselbe Cloudflare-Konto ist. Es braucht keine HTTP-Schnittstelle und
+keinen geteilten Schlüssel dazwischen.
 
 ```jsonc
 {
   "d1_databases": [
-    {
-      "binding": "TARIF_DB",
-      "database_name": "tarifcheck",
-      "database_id": "<dieselbe ID wie in der wrangler.jsonc von tarifcheck>"
-    }
+    { "binding": "TARIF_DB", "database_name": "tarifcheck",
+      "database_id": "<dieselbe ID wie in der wrangler.jsonc hier>" }
   ],
   "r2_buckets": [
     { "binding": "TARIF_R2", "bucket_name": "tarifcheck" }
@@ -42,8 +27,11 @@ entstehen. Ein zweiter Schreiber würde sie unbemerkt entwerten.
 }
 ```
 
-Die `database_id` steht in der `wrangler.jsonc` dieses Repos oder kommt aus
-`npx wrangler d1 list`. **Kein `migrations_dir` setzen** — die Migrationen gehören hierher.
+**Kein `migrations_dir` setzen** — die Migrationen gehören in dieses Repo.
+
+**Nur lesen.** Schreiben ist Sache der Seite. Der Grund ist nicht Vorsicht, sondern
+Zuständigkeit: die Änderungserkennung hängt an Prüfsummen, die beim Schreiben entstehen.
+Ein zweiter Schreiber würde sie unbemerkt entwerten.
 
 ---
 
@@ -211,11 +199,12 @@ Lohnzahlung ansetzt.
 
 ---
 
-## 5. Anmeldung
+## 5. Anmeldung (bereits umgesetzt)
 
-Der MCP-Server macht seine eigene Anmeldung — die Seite hat damit nichts zu tun.
+Umgesetzt in `src/auth/access.ts` und `src/index.ts`. Der MCP-Server stellt eigene Tokens
+aus; die Seite hängt an Cloudflare Access. Zum Einrichten siehe `SETUP.md`.
 
-Empfohlen: `workers-oauth-provider` als eigener Autorisierungsserver, mit Cloudflare
+Der Aufbau: `workers-oauth-provider` als eigener Autorisierungsserver, mit Cloudflare
 Access davor. Grund: Claude-Connectors melden sich per Dynamic Client Registration an,
 das kennt Access für SaaS nicht. `workers-oauth-provider` spricht DCR nach außen und OIDC
 nach innen mit Access. Dafür braucht der MCP-Worker eine eigene KV-Namespace und eine
@@ -228,7 +217,9 @@ empfohlene Variante — zustandslos, also ohne Durable Objects, was im Free-Plan
 
 ---
 
-## 6. Vorschlag für den Werkzeugschnitt
+## 6. Werkzeuge des MCP
+
+Umgesetzt in `src/mcp/werkzeuge.ts`.
 
 | Werkzeug | Abfrage |
 |---|---|
@@ -239,8 +230,9 @@ empfohlene Variante — zustandslos, also ohne Durable Objects, was im Free-Plan
 | `tarife_durchsuchen` | 3.6 |
 | `versionen_auflisten` | 3.7 |
 
-Zusätzlich MCP-Resources unter `tarif://<gewerk>/<kuerzel>`, damit Dokumente auch ohne
-Werkzeugaufruf angeheftet werden können.
+Die Suche setzt ab vier Buchstaben ein Präfix (`"Wegezeit"*`). Ohne das findet
+„Wegezeit" die „Wegezeitentschädigung" nicht — in deutschen Tariftexten wäre die Suche
+sonst häufig blind.
 
 ---
 

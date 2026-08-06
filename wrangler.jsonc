@@ -14,16 +14,22 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    // Der Worker entscheidet zuerst - sonst wuerde /api/... von den
-    // statischen Dateien abgefangen, bevor der Code drankommt.
-    "run_worker_first": ["/api/*", "/intern/*"]
+    // Der Worker entscheidet immer zuerst.
+    //
+    // Bewusst pauschal und nicht als Pfadliste: sonst faengt die
+    // Dateiauslieferung Pfade ab, die es als Datei nicht gibt, und antwortet
+    // mit 405 statt den Worker zu fragen. Das trifft genau die Pfade der
+    // MCP-Anmeldung (/mcp, /token, /register, /.well-known/...) und faellt
+    // erst auf, wenn Claude sich nicht verbinden kann. Statische Dateien
+    // liefert der Worker am Ende ueber env.ASSETS.fetch aus.
+    "run_worker_first": true
   },
 
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "tarifcheck",
-      "database_id": "PLATZHALTER_SIEHE_SETUP_MD",
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
@@ -38,6 +44,14 @@
   "ai": {
     "binding": "AI"
   },
+
+  // Tokens und Grants des OAuth-Providers fuer den MCP.
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
 
   // Selbstbindung: der Cron ruft sich hierueber einmal pro Quelle auf.
   // Laeuft am Netzwerk vorbei, also auch an Cloudflare Access vorbei.

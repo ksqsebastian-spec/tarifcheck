@@ -1,6 +1,6 @@
 # Einrichten
 
-Von null bis laufender Seite. Alles bis auf Schritt 6 läuft im kostenlosen Cloudflare-Tarif.
+Von null bis laufender Seite mit MCP. Alles läuft im kostenlosen Cloudflare-Tarif.
 
 Voraussetzung: Node 20+ und ein Cloudflare-Konto.
 
@@ -9,38 +9,59 @@ npm install
 npx wrangler login
 ```
 
-## 1. Speicher und Datenbank anlegen
+---
+
+## 1. Speicher, Datenbank, KV
 
 ```bash
 npx wrangler r2 bucket create tarifcheck
 npx wrangler d1 create tarifcheck
+npx wrangler kv namespace create OAUTH_KV
 ```
 
-`d1 create` gibt eine `database_id` aus. Diese in `wrangler.jsonc` bei
-`d1_databases[0].database_id` eintragen — dort steht noch ein Platzhalter.
+Die drei Befehle geben je eine ID aus. Diese in `wrangler.jsonc` eintragen, dort stehen
+noch Platzhalter:
 
-**Die ID gut aufheben.** Der MCP-Server im `mcpee`-Repo braucht genau dieselbe, siehe
-`MCP-CONTRACT.md`.
+- `d1_databases[0].database_id`
+- `kv_namespaces[0].id`
 
-## 2. Schema anlegen
+(Der R2-Bucket wird über den Namen angesprochen, dort ist nichts einzutragen.)
+
+## 2. Schema und Quellen
 
 ```bash
-npm run migrate          # remote
-npm run migrate:local    # fürs lokale Ausprobieren
+npm run migrate     # Tabellen anlegen
+npm run seed        # data/tarif-quellen.tsv einspielen
 ```
 
-## 3. Quellen einspielen
+`seed` ist mehrfach ausführbar. Es zieht geänderte Adressen und Titel nach und lässt
+bestehende Fassungen und Meldungen in Ruhe.
 
-Liest `data/tarif-quellen.tsv` und schreibt sie in die Datenbank:
+## 3. Anmeldung für den MCP vorbereiten (Access für SaaS)
+
+Der MCP-Server stellt eigene Tokens aus, weil Claude sich per Dynamic Client Registration
+anmeldet — das kennt Access nicht. Access ist dahinter das Anmeldeverfahren.
+
+1. **Zero Trust → Access controls → Applications → Create new application → SaaS**
+2. Name z. B. `Tarifcheck MCP`, Protokoll **OIDC**
+3. **Redirect URL**: `https://tarifcheck.<konto>.workers.dev/callback`
+4. Notieren: **Client ID**, **Client Secret**, **Authorization endpoint**, **Token endpoint**
+5. Unter **Advanced settings** die **Refresh tokens** einschalten — sonst muss man sich in
+   Claude alle paar Stunden neu anmelden
+6. Policy anlegen, z. B. *Emails ending in* `@gruppenwerk.de`
+
+Dann die Werte als Secrets setzen:
 
 ```bash
-npm run seed
-npm run seed:local
+npx wrangler secret put ACCESS_CLIENT_ID
+npx wrangler secret put ACCESS_CLIENT_SECRET
+npx wrangler secret put ACCESS_AUTHORIZATION_URL
+npx wrangler secret put ACCESS_TOKEN_URL
+npx wrangler secret put COOKIE_ENCRYPTION_KEY   # openssl rand -hex 32
 ```
 
-Der Befehl ist mehrfach ausführbar. Er zieht geänderte Adressen und Titel nach und lässt
-bestehende Versionen und Meldungen in Ruhe. Nach dem Anpassen der TSV also einfach
-nochmal laufen lassen.
+`COOKIE_ENCRYPTION_KEY` signiert den Zustand, der während der Anmeldung durch den Browser
+des Nutzers läuft. Ohne ihn könnte jemand die Anfrage unterwegs umschreiben.
 
 ## 4. Veröffentlichen
 
@@ -48,52 +69,80 @@ nochmal laufen lassen.
 npm run deploy
 ```
 
-Die Seite liegt danach auf `https://tarifcheck.<konto>.workers.dev`.
+**Die Seite ist jetzt offen im Netz.** Schritt 5 gehört direkt hinterher.
 
-**Vor Schritt 5 ist sie offen im Netz.** Also gleich weitermachen.
+## 5. Die Seite schützen (Access, selbst gehostet)
 
-## 5. Anmeldung einrichten (Cloudflare Access)
+1. **Zero Trust → Access controls → Applications → Create new application → Self-hosted**
+2. Domain: `tarifcheck.<konto>.workers.dev`
+3. Policy: *Emails ending in* `@gruppenwerk.de`
+4. Anmeldeverfahren: **One-time PIN** genügt — Code per Mail, sonst nichts einzurichten
 
-Ohne diesen Schritt kann jeder die Seite aufrufen und Dateien hochladen.
+### Wichtig: Bypass für die MCP-Pfade
 
-1. Im Cloudflare-Dashboard auf **Zero Trust → Access controls → Applications**
-2. **Create new application → Self-hosted**
-3. Als Adresse die Worker-Domain eintragen (`tarifcheck.<konto>.workers.dev`)
-4. Policy anlegen, zum Beispiel: *Include → Emails ending in →* `@gruppenwerk.de`
-5. Als Anmeldeverfahren genügt **One-time PIN** — dann bekommt man einen Code per Mail
-   und braucht nichts weiter einzurichten.
+Claude ruft die Anmeldepfade auf, **bevor** irgendjemand angemeldet ist. Liegt der
+Access-Login davor, kann sich der Connector nie verbinden — die Anmeldung würde sich
+selbst blockieren.
 
-Zero Trust ist bis 50 Nutzer kostenlos.
+Also eine **zweite Access-Anwendung** anlegen, ebenfalls self-hosted, mit einer
+**Bypass**-Policy (*Everyone*) und diesen Pfaden:
 
-Danach steht in jeder Anfrage die Mailadresse des Angemeldeten. Die Seite nutzt sie, um
-Uploads zuzuordnen — sichtbar in der Meldung „Hochgeladen von …".
+```
+tarifcheck.<konto>.workers.dev/mcp
+tarifcheck.<konto>.workers.dev/authorize
+tarifcheck.<konto>.workers.dev/callback
+tarifcheck.<konto>.workers.dev/token
+tarifcheck.<konto>.workers.dev/register
+tarifcheck.<konto>.workers.dev/.well-known
+```
 
-### Warum der Cron trotzdem durchkommt
+Pfadgenauere Anwendungen haben Vorrang vor der Anwendung auf der ganzen Domain.
 
-Access schützt die öffentliche Adresse. Der tägliche Abruf ruft sich über eine
-Selbstbindung auf, also am Netzwerk und damit auch an Access vorbei. Der interne Weg
-verlangt zusätzlich eine Kopfzeile, die von außen nicht gesetzt werden kann.
+Das ist kein Loch: hinter `/mcp` steht die Token-Prüfung des OAuth-Providers, und
+`/authorize` leitet unmittelbar zur Access-Anmeldung weiter. Ungeschützt ist nur der Weg
+dorthin.
 
-## 6. Ausprobieren
+### Warum der tägliche Abruf trotzdem durchkommt
+
+Er ruft sich über eine Selbstbindung auf, also am Netzwerk und damit auch an Access
+vorbei. Zusätzlich verlangt der interne Pfad eine Kopfzeile, die von außen nicht gesetzt
+werden kann.
+
+## 6. In Claude einbinden
+
+**Einstellungen → Connectors → Connector hinzufügen**, URL:
+
+```
+https://tarifcheck.<konto>.workers.dev/mcp
+```
+
+Beim ersten Aufruf öffnet sich die Access-Anmeldung, danach eine Seite „Zugriff auf
+Tarifcheck erlauben?". Danach funktioniert:
+
+> was ist neu bei den Tischlern, nutz den MCP
+
+---
+
+## 7. Ausprobieren
 
 ```bash
 npx wrangler dev
 ```
 
-Lokal fehlt Workers AI der Zugang — die Textumwandlung schlägt dann mit
-„Binding AI needs to be run remotely" fehl. Das ist erwartbar und kein Fehler im Code;
-Abruf, Speichern und Änderungserkennung lassen sich trotzdem prüfen. Für einen echten
-Durchlauf `npx wrangler dev --remote` nehmen.
+Lokal fehlt Workers AI der Zugang — die Textumwandlung schlägt mit
+„Binding AI needs to be run remotely" fehl. Das ist erwartbar. Abruf, Speichern und
+Änderungserkennung lassen sich trotzdem prüfen. Für einen echten Durchlauf
+`npx wrangler dev --remote`.
 
-Einzelne Quelle von Hand anstoßen:
+Einzelne Quelle anstoßen:
 
 ```bash
 curl -X POST -H "x-tarifcheck-intern: 1" \
   "http://localhost:8787/intern/sync/BAU%2FBRTV"
 ```
 
-Der wichtigste Test: **zweimal hintereinander aufrufen.** Der erste Aufruf muss `ok`
-liefern, der zweite `unveraendert`. Entsteht beim zweiten Mal eine zweite Version, ist die
+**Der wichtigste Test: zweimal hintereinander aufrufen.** Der erste Aufruf muss `ok`
+liefern, der zweite `unveraendert`. Entsteht beim zweiten Mal eine zweite Fassung, ist die
 Änderungserkennung kaputt — daran hängt alles andere.
 
 ```bash
@@ -101,32 +150,35 @@ npx wrangler d1 execute tarifcheck --local \
   --command "SELECT dokument_id, erfasst_am, bytes FROM versionen"
 ```
 
-Den Cron lokal auslösen:
+Cron lokal auslösen:
 
 ```bash
 curl "http://localhost:8787/cdn-cgi/local/scheduled"
 ```
 
-## 7. Nach dem ersten echten Lauf
+Den MCP ohne Claude prüfen:
 
-Zwei Dinge einmal nachsehen:
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+## 8. Nach dem ersten echten Lauf
 
 - **Rechenzeit** unter Workers → tarifcheck → Metrics. Der kostenlose Tarif erlaubt 10 ms
   pro Aufruf. Liegt der Wert dicht darunter, in `wrangler.jsonc` die auskommentierte Zeile
   `"limits": { "cpu_ms": 30000 }` aktivieren — das setzt Workers Paid voraus (5 $/Monat).
-- **KI-Kontingent** unter AI → Workers AI. Der kostenlose Tarif gibt 10.000 Neuronen pro
-  Tag. Umgewandelt wird nur, was sich geändert hat, das sollte also weit darunter bleiben.
+- **KI-Kontingent** unter AI → Workers AI. 10.000 Neuronen pro Tag sind frei. Umgewandelt
+  wird nur, was sich geändert hat.
 
-## 8. Betrieb
+## 9. Betrieb
 
-**Neue Quelle aufnehmen:** Zeile in `data/tarif-quellen.tsv` ergänzen, `npm run seed`.
+**Neue Quelle:** Zeile in `data/tarif-quellen.tsv` ergänzen, `npm run seed`.
 
-**Adresse hat sich geändert:** direkt auf der Seite unter „Quellen" korrigieren. Wer es
-dauerhaft haben will, zieht es zusätzlich in der TSV nach — sonst überschreibt das
-nächste `seed` die Korrektur wieder.
+**Adresse geändert:** auf der Seite unter „Quellen" korrigieren. Für dauerhaft zusätzlich
+in der TSV nachziehen, sonst überschreibt das nächste `seed` die Korrektur.
 
 **Dokument hochladen:** auf der Seite unter „Hochladen". Nötig für Tischler und den
-Lohn-TV Gerüstbau, für die es keine öffentliche Quelle gibt.
+Lohn-TV Gerüstbau.
 
-**Cron ändern:** `triggers.crons` in `wrangler.jsonc`. Steht in UTC, also ist `15 6 * * *`
-im Sommer 08:15 deutscher Zeit und im Winter 07:15.
+**Cron ändern:** `triggers.crons` in `wrangler.jsonc`. Steht in UTC — `15 6 * * *` ist im
+Sommer 08:15 und im Winter 07:15 deutscher Zeit.

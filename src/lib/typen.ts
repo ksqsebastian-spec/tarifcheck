@@ -5,6 +5,17 @@ export interface Env {
   ASSETS: Fetcher;
   /** Selbstbindung. Der Cron ruft sich hierueber pro Quelle einmal auf. */
   SELF: Fetcher;
+
+  /** Tokens und Grants des OAuth-Providers. */
+  OAUTH_KV: KVNamespace;
+
+  // Aus der Access-for-SaaS-App (OIDC). Als Secrets gesetzt, siehe SETUP.md.
+  ACCESS_CLIENT_ID: string;
+  ACCESS_CLIENT_SECRET: string;
+  ACCESS_AUTHORIZATION_URL: string;
+  ACCESS_TOKEN_URL: string;
+  /** Zufallswert, mit dem der Zustand ueber die Anmeldung hinweg signiert wird. */
+  COOKIE_ENCRYPTION_KEY: string;
 }
 
 export interface Quelle {
