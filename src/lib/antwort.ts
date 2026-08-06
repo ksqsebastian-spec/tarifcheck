@@ -13,9 +13,9 @@ export const fehler = (nachricht: string, status = 400): Response =>
   json({ fehler: nachricht }, status);
 
 /**
- * Cloudflare Access setzt diesen Header, nachdem der Nutzer angemeldet ist.
- * Der Worker prueft die Anmeldung nicht selbst nach - das macht Access davor.
- * Hier wird nur ausgelesen, wer es war, um Uploads zuordnen zu koennen.
+ * Mailadresse des Angemeldeten, nur zur Anzeige (etwa "hochgeladen von").
+ * Fuer Zugriffsentscheidungen ist ausschliesslich angemeldeteAdresse() aus
+ * auth/zugriff.ts zustaendig - diese Kopfzeile allein ist faelschbar.
  */
-export const angemeldetAls = (request: Request): string =>
-  request.headers.get("cf-access-authenticated-user-email") ?? "unbekannt";
+export const angemeldetAls = (request: Request): string | null =>
+  request.headers.get("cf-access-authenticated-user-email");

@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "tarifcheck" generated at 2026-08-06T11:43:46.569Z.

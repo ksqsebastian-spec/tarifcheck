@@ -2,3 +2,5 @@ node_modules/
 .wrangler/
 .seed.sql
 .dev.vars
+.env
+.env.*

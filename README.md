@@ -1,5 +1,8 @@
 # Tarifcheck
 
+**Läuft:** <https://tarifcheck.ksqsebastian.workers.dev> — Anmeldung noch einzurichten,
+siehe [`SETUP.md`](SETUP.md).
+
 Hält die Tarifverträge der Gruppenwerk-Gewerke automatisch aktuell, meldet Änderungen auf
 einer Seite und legt alles so ab, dass ein MCP-Server es für Claude auslesen kann.
 

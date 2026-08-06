@@ -1,8 +1,12 @@
 # Einrichten
 
-Von null bis laufender Seite mit MCP. Alles läuft im kostenlosen Cloudflare-Tarif.
+**Die Seite läuft bereits:** <https://tarifcheck.ksqsebastian.workers.dev>
 
-Voraussetzung: Node 20+ und ein Cloudflare-Konto.
+Alle 17 Quellen sind abgerufen, der tägliche Lauf ist auf 06:15 UTC gestellt. Was noch
+fehlt, ist die Anmeldung — Schritte 3 und 5. **Bis dahin sind alle schreibenden Zugriffe
+gesperrt** (Hochladen, Quellen ändern, Prüfung anstoßen); Lesen ist offen.
+
+Alles läuft im kostenlosen Cloudflare-Tarif.
 
 ```bash
 npm install
@@ -85,6 +89,23 @@ npm run deploy
 2. Domain: `tarifcheck.<konto>.workers.dev`
 3. Policy: *Emails ending in* `@gruppenwerk.de`
 4. Anmeldeverfahren: **One-time PIN** genügt — Code per Mail, sonst nichts einzurichten
+
+### Schreibende Zugriffe freischalten
+
+Die Seite prüft schreibende Zugriffe selbst, gegen das signierte Token von Access —
+nicht bloß gegen die Kopfzeile `cf-access-authenticated-user-email`. Die ließe sich
+nämlich einfach mitschicken, solange keine Access-Anwendung davorsteht.
+
+Dafür fehlen zwei Angaben. Beide stehen in der eben angelegten **self-hosted** Anwendung:
+
+```bash
+npx wrangler secret put ACCESS_TEAM_DOMAIN   # z.B. gruppenwerk.cloudflareaccess.com
+npx wrangler secret put ACCESS_AUD           # "Application Audience (AUD) Tag"
+```
+
+Den AUD-Tag findet man in der Anwendung unter **Overview**. Solange die beiden fehlen,
+bleibt jeder schreibende Zugriff mit 403 gesperrt — absichtlich: wer die Adresse einer
+Quelle ändern kann, bestimmt, was der Dienst morgen früh als Tarifvertrag ablegt.
 
 ### Wichtig: Bypass für die MCP-Pfade
 
@@ -170,7 +191,19 @@ Den MCP ohne Claude prüfen:
 npx @modelcontextprotocol/inspector
 ```
 
-## 8. Nach dem ersten echten Lauf
+## 8. Bekannte Lücken im Bestand
+
+Drei PDFs liefern keinen Text, weil sie Scans ohne Texterkennung sind. Die Dateien liegen
+vor, sind aber nicht durchsuchbar. Die Seite zeigt sie rot, und der MCP weist bei jeder
+Auskunft darauf hin, statt so zu tun, als wäre der Vertrag da:
+
+| Dokument | Ausweg |
+|---|---|
+| Bundesrahmentarifvertrag Bau (SOKA-BAU) | Die **Zoll-Fassung** desselben Vertrags ist vollständig lesbar — als `bau-brtv-zoll` bereits im Bestand |
+| 9. GerüstbauerArbbV (Zoll) | Die Fassung von *Gesetze im Internet* ist lesbar — als `geruestbau-arbbv-gii` im Bestand |
+| 12. MalerArbbV (Zoll) | Bisher keine lesbare Quelle. Bei Bedarf eine durchsuchbare Fassung hochladen |
+
+## 9. Nach dem ersten echten Lauf
 
 - **Rechenzeit** unter Workers → tarifcheck → Metrics. Der kostenlose Tarif erlaubt 10 ms
   pro Aufruf. Liegt der Wert dicht darunter, in `wrangler.jsonc` die auskommentierte Zeile
@@ -178,7 +211,7 @@ npx @modelcontextprotocol/inspector
 - **KI-Kontingent** unter AI → Workers AI. 10.000 Neuronen pro Tag sind frei. Umgewandelt
   wird nur, was sich geändert hat.
 
-## 9. Betrieb
+## 10. Betrieb
 
 **Neue Quelle:** Zeile in `data/tarif-quellen.tsv` ergänzen, `npm run seed`.
 

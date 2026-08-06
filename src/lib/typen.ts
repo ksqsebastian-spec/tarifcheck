@@ -16,6 +16,11 @@ export interface Env {
   ACCESS_TOKEN_URL: string;
   /** Zufallswert, mit dem der Zustand ueber die Anmeldung hinweg signiert wird. */
   COOKIE_ENCRYPTION_KEY: string;
+
+  // Fuer die Pruefung schreibender Zugriffe gegen die selbst gehostete
+  // Access-Anwendung. Fehlen sie, sind schreibende Zugriffe gesperrt.
+  ACCESS_TEAM_DOMAIN?: string;   // z.B. gruppenwerk.cloudflareaccess.com
+  ACCESS_AUD?: string;           // Application Audience Tag der Anwendung
 }
 
 export interface Quelle {
@@ -58,6 +63,7 @@ export interface Version {
   http_last_modified: string | null;
   quelle_url: string | null;
   hochgeladen_von: string | null;
+  text_zeichen: number | null;
 }
 
 export type MeldungsArt =

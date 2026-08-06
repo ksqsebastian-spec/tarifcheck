@@ -62,6 +62,12 @@ function vorbehalte(d: any): string[] {
       `Der letzte Abrufversuch ist gescheitert (${d.letzter_fehler ?? "Grund unbekannt"}). ` +
         "Der Inhalt stammt vom letzten erfolgreichen Abruf und kann veraltet sein.",
     );
+  if (d.text_brauchbar === 0)
+    v.push(
+      "ACHTUNG: Aus diesem Dokument ließ sich kein Text gewinnen — die Datei liegt " +
+        "vor, ist aber vermutlich ein Scan ohne Texterkennung. Es gibt hier KEINEN " +
+        "Inhalt wiederzugeben. Nicht raten, sondern auf die Quelle verweisen.",
+    );
   if (!d.gueltig_ab)
     v.push(
       "Kein Gültigkeitsdatum hinterlegt. Es wird bewusst nicht aus dem Dokument " +
@@ -108,8 +114,10 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
       const sql = `
         SELECT d.id, d.titel, d.kuerzel, d.gewerk, d.herkunft, d.gueltig_ab, d.hinweis,
                d.letzter_status, d.letzter_fehler, d.letzte_pruefung,
-               v.erfasst_am AS stand, q.url AS quelle_url, q.typ AS quelle_typ,
-               (d.aktuelle_version_id IS NOT NULL) AS hat_inhalt
+               v.erfasst_am AS stand, v.text_zeichen, v.text_brauchbar,
+               q.url AS quelle_url, q.typ AS quelle_typ,
+               (d.aktuelle_version_id IS NOT NULL AND COALESCE(v.text_brauchbar, 0) = 1)
+                 AS hat_inhalt
           FROM dokumente d
           LEFT JOIN versionen v ON v.id = d.aktuelle_version_id
           LEFT JOIN quellen   q ON q.id = d.quelle_id
@@ -176,6 +184,8 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
 
       const objekt = await env.R2.get(v.r2_md_key);
       if (!objekt) return text("Der Text ist im Speicher nicht auffindbar.");
+
+      d.text_brauchbar = v.text_brauchbar;
 
       let inhalt = await objekt.text();
       let gekuerzt = false;

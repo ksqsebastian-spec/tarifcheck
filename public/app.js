@@ -175,6 +175,8 @@ async function zeigeDokumente(ziel) {
         <td>
           <span class="punkt ${punkt}"></span><strong>${esc(d.titel)}</strong>
           ${d.herkunft === "manuell" ? ' <span class="freiwillig">(hochgeladen)</span>' : ""}
+          ${d.aktuelle_version_id && d.text_brauchbar === 0
+            ? `<div class="warnung" style="color:var(--rot);border-color:var(--rot)">Kein Text gewinnbar — Datei liegt vor, ist aber nicht durchsuchbar</div>` : ""}
           ${d.hinweis ? `<div class="warnung">${esc(d.hinweis)}</div>` : ""}
           ${d.letzter_fehler ? `<div class="warnung" style="color:var(--rot);border-color:var(--rot)">${esc(d.letzter_fehler)}</div>` : ""}
         </td>

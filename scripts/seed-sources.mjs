@@ -66,10 +66,13 @@ for (const roh of tsv.split("\n")) {
 }
 
 const jetzt = new Date().toISOString();
+// Bewusst ohne BEGIN TRANSACTION: entfernte D1-Datenbanken lehnen
+// ausdrueckliche Transaktionen ab ("please use state.storage.transaction()").
+// Unkritisch, weil jede Anweisung ein Upsert ist - bricht der Lauf in der
+// Mitte ab, stellt ein zweiter Durchlauf denselben Zustand her.
 const out = [
   "-- Erzeugt von scripts/seed-sources.mjs. Nicht von Hand bearbeiten,",
   "-- sondern data/tarif-quellen.tsv pflegen und neu erzeugen.",
-  "BEGIN TRANSACTION;",
 ];
 
 for (const z of zeilen) {
@@ -95,6 +98,5 @@ for (const z of zeilen) {
   );
 }
 
-out.push("COMMIT;");
 process.stdout.write(out.join("\n") + "\n");
 process.stderr.write(`${zeilen.length} Quellen verarbeitet.\n`);

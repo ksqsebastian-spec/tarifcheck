@@ -16,19 +16,26 @@ export const textSchluessel = (
 ): string => `md/${gewerk}/${dokumentId}/${stempel}.md`;
 
 /**
- * Schreibt einen Datenstrom direkt nach R2, ohne ihn im Worker
- * zusammenzubauen. Das haelt die Rechenzeit unten - siehe PLAN.md Abschnitt 4.
+ * Schreibt Daten nach R2 und gibt die Pruefsumme zurueck, die R2 selbst bildet.
+ * Sie ist unsere Vergleichsbasis - wir rechnen bewusst nichts selbst durch.
  *
- * Der zurueckgegebene etag ist die MD5-Pruefsumme, die R2 selbst bildet.
- * Sie ist unsere Vergleichsbasis; wir rechnen bewusst nichts selbst durch.
+ * Bewusst gepuffert statt durchgereicht: R2 lehnt einen Datenstrom unbekannter
+ * Laenge ab ("Provided readable stream must have a known length"), und
+ * content-length ist dafuer kein verlaesslicher Indikator - der Wert beschreibt
+ * die uebertragenen Bytes, waehrend die Laufzeit transparent entpackt. Der
+ * Fehler trat entsprechend sprunghaft auf, mal bei diesen Quellen, mal bei
+ * jenen.
+ *
+ * Kostet hier fast nichts: die Dateien sind wenige hundert kB, und bei einer
+ * echten Aenderung braucht die Umwandlung die Bytes ohnehin im Speicher.
  */
-export async function stromSpeichern(
+export async function bytesSpeichern(
   env: Env,
   schluessel: string,
-  koerper: ReadableStream,
+  inhalt: ArrayBuffer,
   typ: string,
 ): Promise<{ etag: string; bytes: number }> {
-  const objekt = await env.R2.put(schluessel, koerper, {
+  const objekt = await env.R2.put(schluessel, inhalt, {
     httpMetadata: { contentType: typ },
   });
   if (!objekt) throw new Error(`R2 hat ${schluessel} nicht angenommen`);

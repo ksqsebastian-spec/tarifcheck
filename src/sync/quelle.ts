@@ -7,16 +7,15 @@ import {
   volltextSetzen,
 } from "../lib/db";
 import {
-  bytesLesen,
+  bytesSpeichern,
   rohSchluessel,
-  stromSpeichern,
   textSchluessel,
   textSpeichern,
   verwerfen,
 } from "../lib/speicher";
 import type { Dokument, Env, SyncErgebnis, Version } from "../lib/typen";
 import { jetzt, stempel } from "../lib/zeit";
-import { nachMarkdown, pdfLinks } from "./markdown";
+import { nachMarkdown, pdfLinks, textAusbeute, textBrauchbar } from "./markdown";
 
 /**
  * Manche Behoerdenseiten antworten auf Abrufe ohne erkennbaren Browser gar
@@ -60,6 +59,8 @@ async function versionAnlegen(
     mdKey: string;
     bytes: number;
     etag: string;
+    textZeichen: number;
+    textBrauchbar: boolean;
     httpEtag: string | null;
     httpLastModified: string | null;
     quelleUrl: string;
@@ -70,8 +71,8 @@ async function versionAnlegen(
     env.DB.prepare(
       `INSERT INTO versionen
          (id, dokument_id, erfasst_am, r2_raw_key, r2_md_key, bytes, etag,
-          http_etag, http_last_modified, quelle_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          http_etag, http_last_modified, quelle_url, text_zeichen, text_brauchbar)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       versionId,
       dokument.id,
@@ -83,6 +84,8 @@ async function versionAnlegen(
       daten.httpEtag,
       daten.httpLastModified,
       daten.quelleUrl,
+      daten.textZeichen,
+      daten.textBrauchbar ? 1 : 0,
     ),
     env.DB.prepare("UPDATE dokumente SET aktuelle_version_id = ? WHERE id = ?").bind(
       versionId,
@@ -151,11 +154,13 @@ async function dateiHolen(
     endungAus(quelle.dateiname),
   );
 
-  // Direkt durchreichen statt im Speicher zusammenbauen.
-  const { etag, bytes } = await stromSpeichern(
+  // Einmal in den Speicher holen und von dort aus weiterverwenden: fuer R2 und,
+  // falls sich etwas geaendert hat, gleich fuer die Umwandlung.
+  const roh = await antwort.arrayBuffer();
+  const { etag, bytes } = await bytesSpeichern(
     env,
     rawKey,
-    antwort.body,
+    roh,
     antwort.headers.get("content-type") ?? "application/pdf",
   );
 
@@ -180,8 +185,6 @@ async function dateiHolen(
   const mdKey = textSchluessel(dokument.gewerk, dokument.id, zeit);
   let markdown: string;
   try {
-    const roh = await bytesLesen(env, rawKey);
-    if (!roh) throw new Error("Gerade geschriebene Datei nicht wieder lesbar");
     markdown = await nachMarkdown(env, quelle.dateiname, roh);
     await textSpeichern(env, mdKey, markdown);
   } catch (e) {
@@ -192,6 +195,8 @@ async function dateiHolen(
     throw e;
   }
 
+  const ausbeute = textAusbeute(markdown);
+  const brauchbar = textBrauchbar(ausbeute, bytes, true);
   const versionId = await versionAnlegen(env, dokument, {
     rawKey,
     mdKey,
@@ -200,10 +205,30 @@ async function dateiHolen(
     httpEtag,
     httpLastModified,
     quelleUrl: quelle.url,
+    textZeichen: ausbeute,
+    textBrauchbar: brauchbar,
   });
 
   await volltextSetzen(env, dokument, markdown);
   await pruefungVermerken(env, dokument.id, "ok");
+
+  // Die Umwandlung meldet keinen Fehler, wenn sie nichts findet. Ohne diese
+  // Meldung stuende das Dokument als vorhanden da und waere doch leer.
+  if (!brauchbar) {
+    await meldungAnlegen(env, {
+      art: "fehler",
+      gewerk: dokument.gewerk,
+      dokumentId: dokument.id,
+      titel: `Kein Text gewinnbar: ${dokument.titel}`,
+      beschreibung:
+        `Die Datei wurde geholt (${Math.round(bytes / 1024)} kB), aber aus dem PDF ` +
+        `ließ sich kein Text gewinnen — es kamen nur ${ausbeute} Zeichen heraus.\n\n` +
+        `Das Dokument taucht deshalb in der Suche nicht auf, und der MCP weist ` +
+        `darauf hin. Abhilfe: eine andere Quelle für denselben Vertrag nutzen ` +
+        `(oft hat die Zoll-Fassung Text) oder eine durchsuchbare Fassung hochladen.\n\n` +
+        `Quelle: ${quelle.url}`,
+    });
+  }
 
   const erstmalig = !vorher;
   await meldungAnlegen(env, {
@@ -272,6 +297,8 @@ async function seiteBeobachten(
     httpEtag: antwort.headers.get("etag"),
     httpLastModified: antwort.headers.get("last-modified"),
     quelleUrl: quelle.url,
+    textZeichen: textAusbeute(markdown),
+    textBrauchbar: textBrauchbar(textAusbeute(markdown), bytes, false),
   });
 
   await volltextSetzen(env, dokument, markdown);
