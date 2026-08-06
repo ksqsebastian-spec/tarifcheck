@@ -46,7 +46,8 @@ Dann als drittes Element in `REGISTRY`:
   catalog: "tools.json",
   binding: "TARIFCHECK",
   notes: [
-    "Anmeldung über Cloudflare Access — Zugriff hat, wer eine Gruppenwerk-Mailadresse hat.",
+    "Eigene Anmeldung mit Benutzer und Passwort — dieselbe wie auf der Seite. " +
+      "Kein externer Anbieter dahinter.",
     "Ausschließlich lesend. Hochladen und Quellen ändern geht nur über die Seite selbst.",
     "Jede Antwort führt mit, von wann die Fassung ist und ob sie allgemeinverbindlich " +
       "ist. Beim Maler-Rahmentarifvertrag kursieren ältere Fassungen — ohne diesen " +
@@ -60,10 +61,8 @@ Dann als drittes Element in `REGISTRY`:
 
 ## 2. Service-Binding in der `wrangler.jsonc` von `mcp-hub`
 
-**Das ist nicht optional.** Tarifcheck liegt hinter Cloudflare Access; ein Abruf von
-`https://tarifcheck…/tools.json` über das Netz landet dann auf der Anmeldeseite, und der
-Hub würde „Nicht erreichbar" anzeigen. Ein Service-Binding geht am Netz und damit auch an
-Access vorbei — genau deshalb benutzen HERO und Lexware es schon.
+Wie bei HERO und Lexware. `fetchCatalog` schlägt das Binding über `env[entry.binding]`
+nach und holt den Katalog darüber, statt über das Netz zu gehen.
 
 ```jsonc
 "services": [
@@ -120,9 +119,12 @@ Liste von Hand würde früher oder später etwas anderes behaupten als der Serve
 
 \* Pflicht
 
-## Falls kein Service-Binding gewünscht ist
+## Zum Service-Binding
 
-Dann muss `/tools.json` in der Access-Bypass-Anwendung von Tarifcheck mit aufgeführt
-werden, neben `/mcp`, `/authorize`, `/callback`, `/token`, `/register` und
-`/.well-known`. Das Binding ist trotzdem der bessere Weg: es spart den Umweg übers Netz
-und hängt nicht daran, dass eine Access-Regel richtig gepflegt bleibt.
+`/tools.json` ist bewusst ohne Anmeldung erreichbar — es enthält nur Namen und
+Beschreibungen der Werkzeuge, keine Tarifdaten. Der Hub käme also auch ohne Binding an
+den Katalog.
+
+Trotzdem ist das Binding der bessere Weg: es spart den Umweg übers Netz, zählt nicht
+gegen das Anfragekontingent und bleibt auch dann heil, wenn Tarifcheck später einmal
+komplett hinter eine Anmeldung wandert.
