@@ -1,0 +1,48 @@
+# Tarifvertrags-Quellen Gruppenwerk — amtlich / Tarifvertragsparteien
+# Spalten: GEWERK	FIRMEN	TYP	KUERZEL	URL	DATEINAME
+# TYP: pdf = direkter Download | watch = HTML-Seite, nur auf Aenderung pruefen
+#
+# ---------------------------------------------------------------------------
+# UEBERGREIFEND (amtlich, BMAS) — klaert, welche TV allgemeinverbindlich sind
+# ---------------------------------------------------------------------------
+UEBERGREIFEND	alle	pdf	AVE-VERZEICHNIS	https://www.bmas.de/SharedDocs/Downloads/DE/Arbeitsrecht/ave-verzeichnis.pdf?__blob=publicationFile	BMAS_AVE-Verzeichnis.pdf
+#
+# ---------------------------------------------------------------------------
+# BAU / BAUHAUPTGEWERBE — Werner Bau, Gruppenwerk BSI
+# Quelle: SOKA-BAU (gemeinsame Einrichtung der Tarifvertragsparteien ZDB/HDB + IG BAU)
+# ---------------------------------------------------------------------------
+BAU	Werner Bau, BSI	pdf	BRTV	https://api.soka-bau.de/fileadmin/Dokumente/tarifvertrag_brtv.pdf	Bau_BRTV.pdf
+BAU	Werner Bau, BSI	pdf	VTV	https://api.soka-bau.de/fileadmin/Dokumente/tarifvertrag_vtv.pdf	Bau_VTV_Sozialkassenverfahren.pdf
+BAU	Werner Bau, BSI	pdf	BBTV	https://api.soka-bau.de/fileadmin/Dokumente/tarifvertrag_bbtv.pdf	Bau_BBTV_Berufsbildung.pdf
+BAU	Werner Bau, BSI	pdf	TZA-BAU	https://api.soka-bau.de/fileadmin/Dokumente/tarifvertrag_tza-bau.pdf	Bau_TZA_Altersversorgung.pdf
+BAU	Werner Bau, BSI	pdf	TZR	https://api.soka-bau.de/fileadmin/Dokumente/baurente_tarifvertrag-tzr.pdf	Bau_TZR_Zusatzrente.pdf
+# amtliche Zweitquelle (Generalzolldirektion) — AVE-Fassung fuer die Pruefpraxis
+BAU	Werner Bau, BSI	pdf	BRTV-ZOLL	https://www.zoll.de/SharedDocs/Downloads/DE/Vorschriften/Arbeit/Mindestarbeitsbedingungen/tarifv_bauhauptgewerbe_brtv.pdf?__blob=publicationFile	Bau_BRTV_AVE-Zoll.pdf
+BAU	Werner Bau, BSI	pdf	VTV-ZOLL	https://www.zoll.de/SharedDocs/Downloads/DE/Vorschriften/Arbeit/Mindestarbeitsbedingungen/tarifv_bauhauptgewerbe_vtv.pdf?__blob=publicationFile	Bau_VTV_AVE-Zoll.pdf
+#
+# ---------------------------------------------------------------------------
+# GERUESTBAU — J. Werner Geruestbau
+# Quelle: Generalzolldirektion (amtlich) + gesetze-im-internet (Rechtsverordnung)
+# ---------------------------------------------------------------------------
+GERUESTBAU	J. Werner Geruestbau	pdf	RTV	https://www.zoll.de/SharedDocs/Downloads/DE/Vorschriften/Arbeit/Mindestarbeitsbedingungen/tarifv_geruestbauer_rtv.pdf?__blob=publicationFile	Geruestbau_RTV.pdf
+GERUESTBAU	J. Werner Geruestbau	pdf	ARBBV	https://www.zoll.de/SharedDocs/Downloads/DE/Vorschriften/Arbeit/Mindestarbeitsbedingungen/geruestbauerarbbv_9.pdf?__blob=publicationFile	Geruestbau_9-GeruestbauerArbbV.pdf
+GERUESTBAU	J. Werner Geruestbau	pdf	ARBBV-GII	https://www.gesetze-im-internet.de/ger_stbarbbv_9/9._Ger%C3%BCstbauerArbbV.pdf	Geruestbau_9-GeruestbauerArbbV_gii.pdf
+# Lohn-TV + TV Mindestlohn nur im Mitgliederbereich der Bundesinnung -> nur ueberwachen
+GERUESTBAU	J. Werner Geruestbau	watch	BUNDESINNUNG	https://www.geruestbauhandwerk.de/downloads/?tx_solr%5Bfilter%5D%5B0%5D=category_stringM%3ATarif	Geruestbau_Bundesinnung_Downloads.html
+#
+# ---------------------------------------------------------------------------
+# MALER — Maler Hantke
+# Quelle: Malerkasse (Sozialkasse der Tarifvertragsparteien) + Zoll + gesetze-im-internet
+# ---------------------------------------------------------------------------
+MALER	Maler Hantke	pdf	TARIFAUSZUEGE	https://www.malerkasse.de/fileadmin/Arbeitgeber/Brosch%C3%BCren/Tarifauszuege_Maler-und_Lackiererhandwerk.pdf	Maler_Tarifauszuege_Malerkasse.pdf
+MALER	Maler Hantke	pdf	ARBBV	https://www.zoll.de/SharedDocs/Downloads/DE/Vorschriften/Arbeit/Mindestarbeitsbedingungen/malerarbbv_12.pdf?__blob=publicationFile	Maler_12-MalerArbbV.pdf
+MALER	Maler Hantke	pdf	MINDESTLOHN-TV	https://www.gesetze-im-internet.de/tvmindestlohn_maler_12/TVMindestlohn_Maler_12.pdf	Maler_TV-Mindestlohn.pdf
+MALER	Maler Hantke	watch	MALERKASSE	https://www.malerkasse.de/arbeitgeber/grundlagen-rechtliches/tarifvertraege	Maler_Malerkasse_Tarifseite.html
+#
+# ---------------------------------------------------------------------------
+# TISCHLER — Brink, Seehafer Elemente, Mehlig
+# ACHTUNG: keine Allgemeinverbindlicherklaerung -> KEINE amtliche Volltextquelle.
+# Volltexte ausschliesslich im Mitgliederbereich von Tischler Nord (HH/SH).
+# Automatisierbar ist nur die Aenderungsueberwachung der Downloadseite.
+# ---------------------------------------------------------------------------
+TISCHLER	Brink, Seehafer, Mehlig	watch	TISCHLER-NORD	https://www.tischler-nord.de/fuer-unternehmen/fachinformationen-downloads/arbeits-und-tarifrecht	Tischler_TischlerNord_Downloads.html
