@@ -11,20 +11,26 @@ anderen beiden und kennzeichnet alle Werkzeuge als lesend.
 
 ## 1. Eintrag in `hub/src/registry.ts`
 
-Zuerst das Logo neben `HERO_MARK` und `LEXWARE_MARK` — Tarifcheck ist keine fremde Marke,
-das Zeichen ist frei wählbar:
+Zuerst das Logo neben `HERO_MARK` und `LEXWARE_MARK`. Bewusst kein fremdes Zeichen: die
+Quellen sind Behörden und Sozialkassen, deren Marken hier nichts zu suchen haben.
 
 ```ts
 const TARIF_MARK: Mark = {
   inner:
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g fill="#ffffff">' +
-    '<rect x="10" y="16" width="44" height="7" rx="3.5"/>' +
-    '<rect x="10" y="29" width="44" height="7" rx="3.5"/>' +
-    '<rect x="10" y="42" width="26" height="7" rx="3.5"/></g></svg>',
-  bg: "#1F7A5C",
-  accent: "#1F7A5C",
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+    '<rect x="9" y="9" width="32" height="40" rx="5" fill="#fff" opacity=".62"/>' +
+    '<rect x="19" y="15" width="32" height="40" rx="5" fill="#fff"/>' +
+    '<path fill="none" stroke="#0E7A55" stroke-width="6.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round" d="M26 35.5l6 6 12-12.5"/></svg>',
+  bg: "#0E7A55",
+  accent: "#0E7A55",
+  fill: 0.62,
 };
 ```
+
+Zwei versetzte Blätter, das vordere mit Haken: jede Fassung bleibt erhalten, und sie ist
+geprüft. Das `fill: 0.62` ist wichtig — mit dem Standardwert 0.56 wird das Zeichen in der
+Kachel zu klein und das hintere Blatt verschwindet bei 44 px.
 
 Dann als drittes Element in `REGISTRY`:
 
