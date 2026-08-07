@@ -182,12 +182,17 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
       ).all();
 
       return alsJson({
-        dokumente: results.map((d: any) => ({
-          ...d,
-          hat_inhalt: !!d.hat_inhalt,
-          ...datumsangaben(d),
-          vorbehalte: vorbehalte(d),
-        })),
+        dokumente: results.map((zeile: any) => {
+          // datum_funde ist die rohe Spalte. Die Helfer brauchen sie, in der
+          // Ausgabe stuende sie doppelt neben datum_im_text.
+          const { datum_funde: _roh, ...d } = zeile;
+          return {
+            ...d,
+            hat_inhalt: !!d.hat_inhalt,
+            ...datumsangaben(zeile),
+            vorbehalte: vorbehalte(zeile),
+          };
+        }),
       });
     },
   );
