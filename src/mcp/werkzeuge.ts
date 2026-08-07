@@ -373,9 +373,15 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
       // Vorbehalte pro Treffer nachladen, damit nichts ohne seinen Kontext dasteht.
       const ids = [...new Set(results.map((r) => r.dokument_id))];
       const { results: docs } = await env.DB.prepare(
+        // Die Versionsdaten gehoeren mit dazu: ohne sie fehlen in Suchtreffern
+        // sowohl die Datumsangaben als auch der Hinweis auf nicht gewinnbaren
+        // Text - ausgerechnet dort, wo am ehesten jemand eine Zahl ablesen will.
         `SELECT d.id, d.hinweis, d.herkunft, d.gueltig_ab, d.letzter_status,
-                d.letzter_fehler, q.typ AS quelle_typ
-           FROM dokumente d LEFT JOIN quellen q ON q.id = d.quelle_id
+                d.letzter_fehler, q.typ AS quelle_typ,
+                v.text_brauchbar, v.datum_funde, v.erfasst_am AS stand
+           FROM dokumente d
+           LEFT JOIN quellen   q ON q.id = d.quelle_id
+           LEFT JOIN versionen v ON v.id = d.aktuelle_version_id
           WHERE d.id IN (${ids.map(() => "?").join(",")})`,
       )
         .bind(...ids)
@@ -387,6 +393,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
         treffer: results.map((r) => ({
           ...r,
           gueltig_ab: nach.get(r.dokument_id)?.gueltig_ab ?? null,
+          stand: nach.get(r.dokument_id)?.stand ?? null,
           ...datumsangaben(nach.get(r.dokument_id) ?? {}),
           vorbehalte: vorbehalte(nach.get(r.dokument_id) ?? {}),
         })),

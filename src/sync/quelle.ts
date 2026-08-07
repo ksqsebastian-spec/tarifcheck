@@ -45,6 +45,44 @@ const INHALTSBEREICH: Record<string, string> = {
 const endungAus = (dateiname: string): string =>
   dateiname.split(".").pop()?.toLowerCase() ?? "pdf";
 
+/**
+ * Holt eine Adresse und versucht es bei einer voruebergehenden Stoerung
+ * genau einmal erneut.
+ *
+ * Anlass war ein echter Lauf: zoll.de antwortete mit HTTP 525, einem
+ * fehlgeschlagenen TLS-Handshake. Der Link war in Ordnung, die Verbindung
+ * hatte nur einen Aussetzer - das Dokument stand danach aber einen ganzen Tag
+ * als Fehler da. Ein zweiter Versuch nach kurzer Pause kostet nichts und
+ * erspart genau diese Sorte falscher Alarm.
+ *
+ * Nur bei Serverfehlern und Verbindungsabbruechen. Ein 404 wird nicht besser,
+ * wenn man ihn zweimal holt.
+ */
+async function holenMitZweitversuch(
+  url: string,
+  kopfzeilen: Record<string, string>,
+): Promise<Response> {
+  const versuch = () => fetch(url, { headers: kopfzeilen, redirect: "follow" });
+
+  let antwort: Response | null = null;
+  let abbruch: unknown = null;
+  try {
+    antwort = await versuch();
+    if (antwort.status < 500) return antwort;
+  } catch (e) {
+    abbruch = e;
+  }
+
+  await new Promise((r) => setTimeout(r, 3000));
+  try {
+    return await versuch();
+  } catch (e) {
+    // Beide Versuche gescheitert. Der erste Fehler ist meist der sprechendere.
+    if (antwort) return antwort;
+    throw abbruch ?? e;
+  }
+}
+
 /** Bedingte Kopfzeilen aus der letzten Fassung. Ein 304 kostet uns fast nichts. */
 function bedingt(vorher: Version | null): Record<string, string> {
   const h: Record<string, string> = { ...KOPFZEILEN };
@@ -101,6 +139,41 @@ async function versionAnlegen(
 }
 
 /**
+ * Was der Fehler bedeutet - und was zu tun ist.
+ *
+ * Vorher stand unter jedem Fehler derselbe Satz "meist hat der Betreiber seine
+ * Seite umgebaut, Adresse korrigieren". Bei einem TLS-Aussetzer schickt das
+ * jemanden auf die Suche nach einer neuen Adresse, obwohl die alte stimmt.
+ * Ein Rat, der nicht zur Lage passt, kostet mehr Zeit als gar keiner.
+ */
+function rat(fehler: string): string {
+  const code = Number(/HTTP (\d{3})/.exec(fehler)?.[1] ?? 0);
+
+  if (code === 404 || code === 410)
+    return (
+      "Die Adresse gibt es nicht mehr — der Herausgeber hat vermutlich umgebaut. " +
+      'Bitte unter "Quellen" die neue Adresse eintragen.'
+    );
+  if (code === 401 || code === 403)
+    return (
+      "Der Herausgeber weist den Abruf ab. Entweder liegt das Dokument jetzt hinter " +
+      "einer Anmeldung, oder er sperrt automatische Zugriffe. Dann bleibt nur, es " +
+      "von Hand herunterzuladen und hier hochzuladen."
+    );
+  if (code >= 500 || code === 0)
+    return (
+      "Die Quelle war vorübergehend nicht erreichbar — ein zweiter Versuch ist " +
+      "bereits gescheitert. Der nächste tägliche Lauf versucht es erneut; meist " +
+      "erledigt sich das von selbst. Der bisherige Inhalt bleibt unverändert " +
+      "verfügbar, kann aber veralten."
+    );
+  return (
+    'Bitte die Adresse unter "Quellen" prüfen. Der bisherige Inhalt bleibt ' +
+    "verfügbar, kann aber veralten."
+  );
+}
+
+/**
  * Eine Quelle abarbeiten. Laeuft in einem eigenen Aufruf, damit sie ihr
  * eigenes Rechenzeit-Budget hat und ein Fehler die anderen nicht mitreisst.
  */
@@ -123,10 +196,7 @@ export async function quelleAbrufen(env: Env, quelleId: string): Promise<SyncErg
       gewerk: dokument.gewerk,
       dokumentId: dokument.id,
       titel: `Abruf fehlgeschlagen: ${dokument.titel}`,
-      beschreibung:
-        `${text}\n\nQuelle: ${quelle.url}\n\n` +
-        `Meist hat der Betreiber seine Seite umgebaut. Die Adresse lässt sich ` +
-        `unter "Quellen" korrigieren.`,
+      beschreibung: `${text}\n\nQuelle: ${quelle.url}\n\n${rat(text)}`,
     });
     return { dokument_id: dokument.id, status: "fehler", meldung: text };
   }
@@ -140,7 +210,7 @@ async function dateiHolen(
 ): Promise<SyncErgebnis> {
   const vorher = await letzteVersion(env, dokument.id);
 
-  const antwort = await fetch(quelle.url, { headers: bedingt(vorher), redirect: "follow" });
+  const antwort = await holenMitZweitversuch(quelle.url, bedingt(vorher));
 
   // Der Server sagt selbst, dass sich nichts geaendert hat. Billigster Fall.
   if (antwort.status === 304) {
