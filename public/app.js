@@ -220,10 +220,53 @@ async function dokumente() {
     </div>
     <p class="meta rise d2" style="margin-top:14px">
       Die Texte liegen für den MCP bereit, nicht zum Herunterladen. „Quelle" führt zum
-      Herausgeber.
+      Herausgeber. Die Datumsangaben stammen wörtlich aus den Dokumenten und sind
+      ungeprüft — mit „übernehmen" wird daraus eine gepflegte Angabe, die der MCP
+      als verlässlich ausgibt.
     </p>`;
 
   $("#alleG")?.addEventListener("click", () => { filter = null; zeige("dokumente"); });
+
+  const setzen = async (id, wert) => {
+    try {
+      await hole(`/api/dokumente/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ gueltig_ab: wert }),
+      });
+      melden(wert ? `Gültigkeitsdatum gesetzt: ${datum(wert)}` : "Gültigkeitsdatum entfernt.", "gut");
+      zeige("dokumente");
+    } catch (e) { melden(e.message, "schlecht"); }
+  };
+
+  inhalt.querySelectorAll(".uebernehmen").forEach((b) =>
+    b.addEventListener("click", () => setzen(b.dataset.id, b.dataset.datum)));
+  inhalt.querySelectorAll(".loesen").forEach((b) =>
+    b.addEventListener("click", () => setzen(b.dataset.id, null)));
+}
+
+const ARTNAME = {
+  inkrafttreten: "gilt ab", ausserkrafttreten: "läuft aus",
+  fassung: "Fassung", geltung: "gilt ab",
+};
+
+/** Datumsangaben aus dem Text — als Vorschlag, nicht als gesetzte Angabe. */
+function datumZeile(x) {
+  let funde = [];
+  try { funde = JSON.parse(x.datum_funde || "[]"); } catch { /* egal */ }
+  if (!funde.length) return "";
+  return `<div class="unter" style="margin-top:6px">
+    ${funde.slice(0, 3).map((f) => `
+      <span class="fahne" title="${esc(f.fundstelle)}">
+        ${ARTNAME[f.art] ?? f.art} ${datum(f.datum)}
+        ${f.art === "inkrafttreten" && darf.schreiben
+          ? `<button class="uebernehmen" data-id="${esc(x.id)}" data-datum="${f.datum}"
+                     style="border:0;background:none;padding:0 0 0 4px;cursor:pointer;
+                            font:inherit;color:inherit;text-decoration:underline"
+                     title="Als gepflegtes Gültigkeitsdatum übernehmen">übernehmen</button>` : ""}
+      </span>`).join("")}
+    <span class="freiwillig" style="font-size:.75rem">im Text gefunden, ungeprüft</span>
+  </div>`;
 }
 
 function zeileDokument(x) {
@@ -242,11 +285,15 @@ function zeileDokument(x) {
       <div class="titel">${esc(x.titel)}</div>
       <div class="unter">
         <span>${esc(gw(x.gewerk).name)}</span>
-        ${x.gueltig_ab ? `<span class="trenner">·</span><span>gültig ab ${datum(x.gueltig_ab)}</span>` : ""}
+        ${x.gueltig_ab
+          ? `<span class="trenner">·</span><span class="fahne gruen">gültig ab ${datum(x.gueltig_ab)}</span>`
+            + (darf.schreiben ? `<button class="loesen knopf-klein" data-id="${esc(x.id)}">entfernen</button>` : "")
+          : ""}
         ${x.quelle_url ? `<span class="trenner">·</span>
           <a href="${esc(x.quelle_url)}" target="_blank" rel="noopener"
              style="text-decoration:underline;text-underline-offset:2px">Quelle</a>` : ""}
       </div>
+      ${x.gueltig_ab ? "" : datumZeile(x)}
       ${fahnen ? `<div class="unter" style="margin-top:7px">${fahnen}</div>` : ""}
     </div>
     <div class="rechts">${x.aktuelle_version_id ? datum(x.stand) : "—"}</div>

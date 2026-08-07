@@ -66,11 +66,17 @@ Spalten, die man leicht falsch versteht:
   wurde noch nie etwas erfolgreich geholt. Solche Dokumente **nicht als leer ausgeben**,
   sondern sagen, dass noch kein Inhalt vorliegt.
 - **`dokumente.hinweis`** — fachlicher Vorbehalt, siehe Abschnitt 4. **Immer mit ausgeben.**
-- **`dokumente.gueltig_ab`** — von Hand gepflegt, oft `NULL`. Wird bewusst nicht aus dem
-  PDF geraten. `NULL` heißt „unbekannt", nicht „gilt ab immer".
+- **`dokumente.gueltig_ab`** — von Hand gepflegt, über die Seite setzbar. Hat Vorrang vor
+  `versionen.datum_funde`: ein Mensch, der ins Dokument geschaut hat, weiß es besser als
+  ein Muster. `NULL` heißt „unbekannt", nicht „gilt ab immer".
 - **`versionen.etag`** — MD5 von R2, interne Vergleichsbasis. Für den MCP ohne Bedeutung.
 - **`versionen.text_zeichen`** — wieviel lesbarer Text herauskam, Überschriften und
   Seitenmarken abgezogen.
+- **`versionen.datum_funde`** — JSON-Liste von Datumsangaben, die **wörtlich im Dokument
+  stehen**, je mit `art` (`inkrafttreten`, `ausserkrafttreten`, `fassung`, `geltung`) und
+  `fundstelle`. Ausdrücklich Zitate, keine geprüften Angaben — sie ersetzen `gueltig_ab`
+  nicht, sondern füllen die Lücke, solange es leer ist. Bei beobachteten Seiten immer
+  `NULL`: dort wären die Daten die der verlinkten Dokumente, nicht die der Seite.
 - **`versionen.text_brauchbar`** — `0` heißt: die Datei liegt vor, enthält aber keinen
   gewinnbaren Text. Solche Dokumente **nicht als vorhandenen Vertrag ausgeben**. Das Feld
   ist ein gespeichertes Urteil, keine Schwelle zum Nachrechnen — die Regel steht in

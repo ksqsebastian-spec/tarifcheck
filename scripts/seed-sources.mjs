@@ -39,6 +39,10 @@ const TITEL = {
 // Fachliche Einschraenkungen, die der MCP mit ausgeben soll, damit Claude nie
 // eine Zahl ohne ihren Vorbehalt nennt. Steht so im urspruenglichen README.
 const HINWEIS = {
+  "UEBERGREIFEND/AVE-VERZEICHNIS":
+    "Ein Verzeichnis, kein Tarifvertrag. Es listet auf, welche Verträge " +
+    "allgemeinverbindlich sind. Datumsangaben darin gehören zu den " +
+    "aufgeführten Verträgen, nicht zum Verzeichnis selbst.",
   "TISCHLER/TISCHLER-NORD":
     "Keine Allgemeinverbindlicherklärung. Es gibt keine öffentliche Volltextquelle — " +
     "die Verträge liegen im Mitgliederbereich von Tischler Nord. Automatisch wird nur " +

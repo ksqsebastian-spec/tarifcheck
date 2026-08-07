@@ -64,7 +64,7 @@ Ein Worker. Vorne die Seite, hinten der tägliche Abruf.
         ▼                                    │
   Quelle ──▶ Worker ──▶ R2  raw/…pdf         │
               │                              │
-              ├─ AI.toMarkdown() ─▶ R2 md/…md│
+              ├─ pdf.js ─────────▶ R2 md/…md│
               └─ D1: dokumente, versionen,   │
                      meldungen               │
                                              │
@@ -128,7 +128,12 @@ Schema und Ablage sind in **`DATENMODELL.md`** festgeschrieben. Kurzfassung:
 - `dokumente` — ein Vertrag, entweder automatisch geholt oder hochgeladen
 - `versionen` — jede Fassung bleibt erhalten, nichts wird überschrieben
 - `meldungen` — Änderungen, Fehler, Uploads; mit gelesen/ungelesen
-- `dokumente_fts` — Volltextindex über den Text, für die spätere Suche im MCP
+- `dokumente_fts` — Volltextindex über den Text, trägt die Suche im MCP
+
+Zu jeder Fassung wird festgehalten, wieviel lesbarer Text herauskam und welche
+Datumsangaben wörtlich im Dokument stehen. Letzteres, weil `gueltig_ab` fast immer leer
+ist und der Vorbehalt „kein Gültigkeitsdatum" sonst bei jedem Treffer erschiene — ein
+Hinweis, der immer dasteht, wird überlesen.
 
 In R2 liegt unter `raw/` das Original und unter `md/` der Text derselben Fassung.
 

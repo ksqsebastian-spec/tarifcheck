@@ -47,7 +47,11 @@ function deuten(davor: string, danach: string): DatumsArt | null {
   if (/^[^.;]{0,40}in\s+kraft/.test(n)) return "inkrafttreten";
 
   // Sonst das, was unmittelbar davor steht.
-  if (/mit ablauf des\s*$|bis\s+zum\s*$/.test(v)) return "ausserkrafttreten";
+  //
+  // "bis zum" allein reicht nicht: im Rahmentarifvertrag Gerüstbau steht
+  // "Arbeitnehmer, die bis zum 31. Juli 2015 eingruppiert waren" - das ist
+  // eine Stichtagsregel für Personen, kein Ablaufdatum des Vertrags.
+  if (/mit ablauf des\s*$/.test(v)) return "ausserkrafttreten";
   // Wortgrenzen sind hier nicht kosmetisch: ohne sie las "(Eintritt bis
   // 31. Juli 2015)" im Rahmentarifvertrag Gerüstbau als Inkrafttreten.
   if (/\b(tritt|treten)\b[^.;]{0,25}$|\binkrafttreten\b[^.;]{0,40}$/.test(v))

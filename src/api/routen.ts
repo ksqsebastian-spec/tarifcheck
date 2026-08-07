@@ -334,6 +334,36 @@ async function quellen(env: Env): Promise<Response> {
   return json({ quellen: results });
 }
 
+/**
+ * Gueltigkeitsdatum pflegen.
+ *
+ * Bis hierher war `gueltig_ab` ein Feld, das "gepflegt" hiess und das niemand
+ * pflegen konnte - es gab keinen Weg, es zu setzen. Der MCP gab entsprechend
+ * bei jedem Dokument "kein Gueltigkeitsdatum hinterlegt" aus, ohne dass sich
+ * daran etwas aendern liess.
+ *
+ * Was hier eingetragen wird, hat Vorrang vor den Datumsfunden aus dem Text:
+ * ein Mensch, der ins Dokument geschaut hat, weiss es besser als ein Muster.
+ */
+async function dokumentAendern(env: Env, id: string, request: Request): Promise<Response> {
+  const koerper = await request
+    .json<{ gueltig_ab?: string | null }>()
+    .catch(() => ({}) as { gueltig_ab?: string | null });
+
+  if (!("gueltig_ab" in koerper)) return fehler("Nichts zu ändern");
+
+  const wert = koerper.gueltig_ab?.trim() || null;
+  if (wert && !/^\d{4}-\d{2}-\d{2}$/.test(wert))
+    return fehler("Datum bitte als JJJJ-MM-TT angeben");
+
+  const ergebnis = await env.DB.prepare("UPDATE dokumente SET gueltig_ab = ? WHERE id = ?")
+    .bind(wert, id)
+    .run();
+  if (!ergebnis.meta.changes) return fehler("Dokument nicht gefunden", 404);
+
+  return json({ ok: true, gueltig_ab: wert });
+}
+
 /** Adresse nachziehen, wenn ein Betreiber seine Seite umgebaut hat. */
 async function quelleAendern(env: Env, id: string, request: Request): Promise<Response> {
   const koerper = await request.json<{ url?: string; aktiv?: boolean }>();
@@ -480,6 +510,9 @@ export async function apiRouten(
 
   if (p === "/api/meldungen/gelesen" && m === "POST") return meldungenGelesen(env, request);
   if (p === "/api/upload" && m === "POST") return hochladen(env, request);
+
+  if (p.startsWith("/api/dokumente/") && m === "PATCH")
+    return dokumentAendern(env, decodeURIComponent(p.slice("/api/dokumente/".length)), request);
 
   if (p.startsWith("/api/quellen/") && m === "PATCH")
     return quelleAendern(env, decodeURIComponent(p.slice("/api/quellen/".length)), request);
