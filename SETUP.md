@@ -228,5 +228,22 @@ Verlag — und trägt sie über den Wartungsschlüssel ein. Das Ergebnis kommt p
 E-Mail. Findet sie keine amtliche Quelle, ändert sie nichts und meldet es lieber.
 
 Verwaltet wird sie unter claude.ai → Routines, Name „TarifCheck — wöchentliche
-Quellenpflege". Der Prompt enthält die Liste der zulässigen Herausgeber-Domains; kommt
-ein Gewerk dazu, gehört die Domain dort ergänzt.
+Quellenpflege".
+
+Der Prompt führt die zulässigen Herausgeber-Domains auf. Nur von diesen darf eine neue
+Adresse kommen:
+
+| Domain | wofür |
+|---|---|
+| api.soka-bau.de, www.soka-bau.de | SOKA-BAU — BRTV, BBTV, VTV, TZA, TZR |
+| www.zoll.de | allgemeinverbindliche Fassungen, Mindestarbeitsbedingungen |
+| www.gesetze-im-internet.de | Rechtsverordnungen (ArbbV) |
+| www.geruestbauhandwerk.de | Bundesinnung Gerüstbau |
+| www.malerkasse.de | Sozialkasse des Maler- und Lackiererhandwerks |
+| www.tischler-nord.de | Tischler-Innungsverband Nord |
+| www.bmas.de | AVE-Verzeichnis des Bundesarbeitsministeriums |
+
+**Kommt eine Quelle auf einer neuen Domain dazu, muss sie hier und im Routine-Prompt
+ergänzt werden** — sonst weigert sich die Routine, ausgerechnet diese Quelle zu
+reparieren. Die Liste ist bewusst eine Erlaubnisliste und keine Sperrliste: bei einer
+Tarifsammlung ist eine Kopie aus zweiter Hand der teurere Fehler.
