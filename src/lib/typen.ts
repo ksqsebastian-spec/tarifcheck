@@ -28,6 +28,11 @@ export interface Env {
   LOGIN_HASH?: string;
   /** Zufallswert, mit dem Sitzungen und Anmeldevorgaenge signiert werden. */
   SITZUNGS_SCHLUESSEL?: string;
+  /**
+   * Ausweis der woechentlichen Pflegeroutine. Darf ausschliesslich
+   * Quellenadressen korrigieren - nicht hochladen, nicht loeschen.
+   */
+  PFLEGE_SCHLUESSEL?: string;
 }
 
 export interface Quelle {

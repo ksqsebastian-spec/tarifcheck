@@ -137,6 +137,27 @@ export const setzeKeks = (wert: string): string =>
 export const loescheKeks = (): string =>
   `${SITZUNG_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
 
+/* ── Wartungsschluessel ─────────────────────────────────────────────────── */
+
+/**
+ * Ausweis fuer die woechentliche Pflegeroutine, die kein Passwort haben kann.
+ *
+ * Bewusst kein zweiter Weg zur vollen Anmeldung: der Aufrufer bekommt damit
+ * genau eine Befugnis, naemlich eine Quellenadresse zu korrigieren. Der
+ * Schluessel steckt in einem Routine-Text und ist damit schlechter geschuetzt
+ * als ein Passwort im Kopf eines Menschen - deshalb darf er auch weniger.
+ */
+export function pflegeschluesselStimmt(request: Request, env: Env): boolean {
+  const erwartet = env.PFLEGE_SCHLUESSEL;
+  if (!erwartet) return false;
+
+  const kopf = request.headers.get("authorization") ?? "";
+  if (!kopf.startsWith("Bearer ")) return false;
+
+  const roh = new TextEncoder();
+  return gleich(roh.encode(kopf.slice("Bearer ".length)), roh.encode(erwartet));
+}
+
 /* ── Bremse gegen Durchprobieren ────────────────────────────────────────── */
 
 const GRENZE = 10;

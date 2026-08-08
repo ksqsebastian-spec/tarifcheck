@@ -6,6 +6,7 @@ import {
   herkunft,
   loescheKeks,
   passwortStimmt,
+  pflegeschluesselStimmt,
   setzeKeks,
   sitzungAusstellen,
   sitzungPruefen,
@@ -503,6 +504,13 @@ export async function apiRouten(
     return new Response(JSON.stringify({ ok: true }), {
       headers: { "content-type": "application/json", "set-cookie": loescheKeks() },
     });
+
+  // Die woechentliche Pflegeroutine hat kein Passwort und darf genau eins:
+  // eine tote oder veraltete Quellenadresse korrigieren. Absichtlich hier
+  // einzeln aufgefuehrt statt als zweiter Weg durch das Tor unten - sonst
+  // waere der Schluessel mit der Zeit unbemerkt ein zweites Passwort.
+  if (p.startsWith("/api/quellen/") && m === "PATCH" && pflegeschluesselStimmt(request, env))
+    return quelleAendern(env, decodeURIComponent(p.slice("/api/quellen/".length)), request);
 
   // Ab hier wird geschrieben. Ohne gueltige Sitzung geht nichts.
   const schreiben = await sitzungPruefen(request, env);
