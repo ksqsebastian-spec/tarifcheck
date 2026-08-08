@@ -88,6 +88,29 @@ Bewusst **kein** kontoweites Limit: das klingt gründlicher, öffnet aber eine T
 genug Fehlversuche schickt, sperrte damit die Kollegen aus. Gegen verteiltes Raten
 schützt hier die Länge des Passworts, nicht die Bremse.
 
+### Wartungsschlüssel für die wöchentliche Routine
+
+Eine wöchentliche Claude-Routine prüft montags, ob die Quellen-Links noch stimmen, und
+trägt neue Adressen ein (siehe „Wöchentliche Quellenpflege" unter Betrieb). Sie hat keinen
+Menschen, kann sich also nicht anmelden, und bekommt deshalb einen eigenen Ausweis:
+
+```bash
+openssl rand -base64 32 | tr -d '\n' | npx wrangler secret put PFLEGE_SCHLUESSEL
+```
+
+Der Schlüssel wird als `Authorization: Bearer …` mitgeschickt und darf **genau eine**
+Sache: `PATCH /api/quellen/:id`, also eine Quellenadresse korrigieren. Hochladen, Löschen
+und das Ändern von Dokumenten bleiben der Anmeldung vorbehalten. Das ist Absicht — der
+Schlüssel steht im Text der Routine und ist damit schlechter geschützt als ein Passwort im
+Kopf eines Menschen, also darf er auch weniger. Wer ihn erbeutet, kann schlimmstenfalls
+einen Link verbiegen; das fällt beim nächsten Lauf auf und ist rückgängig zu machen.
+
+Ist das Secret nicht gesetzt, greift das Tor nicht und die Routine bekommt 401. Sie
+schreibt die gefundene Korrektur dann in ihren Bericht, statt sie einzutragen.
+
+Zum Wechseln denselben Befehl noch einmal laufen lassen und den neuen Wert in den
+Routine-Text eintragen (claude.ai → Routines → „TarifCheck — wöchentliche Quellenpflege").
+
 ## 4. Veröffentlichen
 
 ```bash
@@ -185,3 +208,25 @@ Lohn-TV Gerüstbau.
 
 **Cron ändern:** `triggers.crons` in `wrangler.jsonc`. Steht in UTC — `15 6 * * *` ist im
 Sommer 08:15 und im Winter 07:15 deutscher Zeit.
+
+### Wöchentliche Quellenpflege
+
+Der tägliche Cron lädt jede Quelle und vergleicht sie byteweise. Zwei Dinge kann er
+naturgemäß nicht, weil sie Urteilsvermögen brauchen:
+
+1. Ein Herausgeber baut seine Seite um — der Link geht ins Leere. Der Cron meldet den
+   Fehler, aber die neue Adresse findet er nicht.
+2. Ein Herausgeber legt eine neue Fassung unter einem neuen Dateinamen ab und lässt die
+   alte liegen. Byteweise ändert sich nichts, der Cron ist zufrieden — und lädt von da an
+   dauerhaft ein veraltetes Dokument. Der gefährlichere der beiden Fälle, weil er still
+   ist.
+
+Dafür läuft eine Claude-Routine, montags 07:41 UTC (Sommer 09:41 deutscher Zeit), also
+gut eine Stunde nach dem täglichen Lauf. Sie prüft jede Adresse, sucht bei Bedarf die
+richtige neue — **ausschließlich** bei der amtlichen Stelle, nie bei einem Portal oder
+Verlag — und trägt sie über den Wartungsschlüssel ein. Das Ergebnis kommt per Push und
+E-Mail. Findet sie keine amtliche Quelle, ändert sie nichts und meldet es lieber.
+
+Verwaltet wird sie unter claude.ai → Routines, Name „TarifCheck — wöchentliche
+Quellenpflege". Der Prompt enthält die Liste der zulässigen Herausgeber-Domains; kommt
+ein Gewerk dazu, gehört die Domain dort ergänzt.
