@@ -9,9 +9,9 @@ import type { Env, SyncErgebnis } from "../lib/typen";
  * Free-Plan sind das 10 ms pro Aufruf), und eine haengende oder kaputte
  * Quelle reisst die anderen nicht mit.
  *
- * Der Weg geht ueber die Selbstbindung als RPC, also am Netzwerk vorbei - und
- * damit auch an Cloudflare Access vorbei, das die oeffentliche Adresse
- * schuetzt. Ueber HTTP ist dieser Weg gar nicht erst erreichbar.
+ * Der Weg geht ueber die Selbstbindung als RPC, also am Netzwerk vorbei.
+ * Ueber HTTP ist dieser Weg gar nicht erst erreichbar - ein Endpunkt, der
+ * fremde Adressen abruft, hat im offenen Netz nichts zu suchen.
  */
 export async function alleQuellenAnstossen(
   env: Env,

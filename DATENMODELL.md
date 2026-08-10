@@ -248,7 +248,32 @@ sonst häufig blind.
 
 ---
 
-## 7. Was sich ändern darf
+## 7. Riegel in der Datenbank
+
+Seit `0005_riegel.sql` erzwingt die Datenbank selbst, was vorher nur in der API und in
+Prompts stand. Wer direkt auf den Tabellen schreibt — die wöchentliche Pflegeroutine tut
+das —, kommt daran nicht vorbei. Ein Verstoß endet mit `SQLITE_CONSTRAINT_TRIGGER` und
+einem deutschen Klartext.
+
+| Regel | Wirkt auf |
+|---|---|
+| `quellen.url` muss mit `https://` beginnen | INSERT, UPDATE |
+| `gewerk` nur BAU, GERUESTBAU, MALER, TISCHLER, UEBERGREIFEND | `quellen`, `dokumente` |
+| `dokumente.gueltig_ab` nur `JJJJ-MM-TT` oder NULL | INSERT, UPDATE |
+| `quellen.aktiv` nur 0 oder 1 | INSERT, UPDATE |
+| `versionen` lassen sich nicht löschen | DELETE |
+| `quellen` lassen sich nicht löschen — stilllegen mit `aktiv = 0` | DELETE |
+| `dokumente` nur löschbar, solange keine Fassung daran hängt | DELETE |
+
+Die letzte Regel ist bewusst kein Verbot: schlägt beim Hochladen die Textumwandlung fehl,
+nimmt der Worker das eben angelegte Dokument zurück. Das darf er, weil daran noch nichts
+hängt.
+
+Die Prüfungen in der API bleiben trotzdem bestehen. Sie sind nicht überflüssig, sondern
+liefern eine brauchbare Fehlermeldung statt einer Datenbankausnahme — der Riegel ist das
+letzte Wort, nicht das erste.
+
+## 8. Was sich ändern darf
 
 **Stabil**, darauf kann gebaut werden: Tabellen- und Spaltennamen, die Werte von `art`,
 `typ`, `herkunft` und `letzter_status`, die R2-Präfixe `raw/` und `md/`.

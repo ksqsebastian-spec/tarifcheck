@@ -83,6 +83,71 @@ async function holenMitZweitversuch(
   }
 }
 
+/**
+ * Obergrenze fuer eine geholte Datei.
+ *
+ * Ein Worker hat 128 MB Arbeitsspeicher, und der Abruf haelt die Datei
+ * zwangslaeufig ganz darin: R2 nimmt keinen Strom unbekannter Laenge, und die
+ * Textgewinnung braucht die Bytes ohnehin am Stueck. Ohne Grenze genuegt es,
+ * dass ein Herausgeber versehentlich ein Video oder ein Archiv unter die
+ * bekannte Adresse legt - der Abruf stirbt dann am Speicher, und zwar mit
+ * einer Meldung, aus der niemand die Ursache liest.
+ *
+ * 40 MB ist reichlich: das groesste Dokument hier misst 1,7 MB.
+ */
+const MAX_BYTES = 40 * 1024 * 1024;
+
+/** Auf eine Nachkommastelle, sonst liest sich "40 MB (Grenze 40 MB)" wie ein Widerspruch. */
+const mb = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+const zuGross = (url: string, bytes: number): Error =>
+  new Error(
+    `Die Datei ist mit ${mb(bytes)} unerwartet groß (Grenze ${mb(MAX_BYTES)}). ` +
+      `Vermutlich liegt unter der Adresse nicht mehr das Dokument, sondern etwas ` +
+      `anderes. Bitte nachsehen: ${url}`,
+  );
+
+/**
+ * Liest den Koerper und bricht ab, sobald die Grenze reisst.
+ *
+ * Die Kopfzeile content-length allein genuegt nicht: sie fehlt bei
+ * Stueckantworten ganz und beschreibt sonst die uebertragenen, also womoeglich
+ * komprimierten Bytes. Deshalb wird zusaetzlich beim Lesen mitgezaehlt.
+ */
+async function bytesMitGrenze(antwort: Response, url: string): Promise<ArrayBuffer> {
+  const angekuendigt = Number(antwort.headers.get("content-length") ?? 0);
+  if (angekuendigt > MAX_BYTES) throw zuGross(url, angekuendigt);
+
+  const leser = antwort.body?.getReader();
+  if (!leser) throw new Error("Die Antwort hatte keinen Inhalt");
+
+  const teile: Uint8Array[] = [];
+  let gesamt = 0;
+  for (;;) {
+    const { done, value } = await leser.read();
+    if (done) break;
+    gesamt += value.byteLength;
+    if (gesamt > MAX_BYTES) {
+      await leser.cancel();
+      throw zuGross(url, gesamt);
+    }
+    teile.push(value);
+  }
+
+  const alles = new Uint8Array(gesamt);
+  let pos = 0;
+  for (const t of teile) {
+    alles.set(t, pos);
+    pos += t.byteLength;
+  }
+  return alles.buffer;
+}
+
+/** Dasselbe fuer beobachtete Seiten, die als Text gelesen werden. */
+async function textMitGrenze(antwort: Response, url: string): Promise<string> {
+  return new TextDecoder().decode(await bytesMitGrenze(antwort, url));
+}
+
 /** Bedingte Kopfzeilen aus der letzten Fassung. Ein 304 kostet uns fast nichts. */
 function bedingt(vorher: Version | null): Record<string, string> {
   const h: Record<string, string> = { ...KOPFZEILEN };
@@ -231,7 +296,7 @@ async function dateiHolen(
 
   // Einmal in den Speicher holen und von dort aus weiterverwenden: fuer R2 und,
   // falls sich etwas geaendert hat, gleich fuer die Umwandlung.
-  const roh = await antwort.arrayBuffer();
+  const roh = await bytesMitGrenze(antwort, quelle.url);
   const { etag, bytes } = await bytesSpeichern(
     env,
     rawKey,
@@ -353,10 +418,13 @@ async function seiteBeobachten(
 ): Promise<SyncErgebnis> {
   const vorher = await letzteVersion(env, dokument.id);
 
-  const antwort = await fetch(quelle.url, { headers: KOPFZEILEN, redirect: "follow" });
+  // Derselbe Zweitversuch wie beim Dateiabruf. Dass er hier zuerst fehlte, war
+  // keine Absicht, sondern ein Versehen: der TLS-Aussetzer, der ihn ausgeloest
+  // hat, trifft eine beobachtete Seite genauso.
+  const antwort = await holenMitZweitversuch(quelle.url, KOPFZEILEN);
   if (!antwort.ok) throw new Error(`HTTP ${antwort.status} ${antwort.statusText}`);
 
-  const html = await antwort.text();
+  const html = await textMitGrenze(antwort, quelle.url);
   const basis = new URL(quelle.url);
 
   let markdown: string;

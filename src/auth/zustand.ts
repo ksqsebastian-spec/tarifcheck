@@ -1,5 +1,5 @@
 /**
- * Zustand ueber die Weiterleitung zu Cloudflare Access hinweg mitfuehren.
+ * Zustand ueber die Weiterleitung zur Anmeldemaske hinweg mitfuehren.
  *
  * Der Umweg geht ueber den Browser des Nutzers, also ueber Fremdgebiet.
  * Alles, was mitgereicht wird, wird darum signiert und beim Rueckweg geprueft -

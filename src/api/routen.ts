@@ -67,6 +67,28 @@ const slug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
 /**
+ * Die Gewerke, die es gibt. Dieselbe Liste steht in der Oberflaeche und im
+ * MCP - hier fehlte sie, und ein Tippfehler im Formular legte deshalb ein
+ * Dokument in einem Gewerk an, das niemand kennt: die Oberflaeche zeichnet es
+ * grau, und jede nach Gewerk gefilterte Abfrage uebergeht es. Vorhanden, aber
+ * halb unsichtbar.
+ */
+const GEWERKE = ["BAU", "GERUESTBAU", "MALER", "TISCHLER", "UEBERGREIFEND"];
+
+/** Nur JJJJ-MM-TT, und der Tag muss es wirklich geben. */
+function datumStimmt(wert: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(wert)) return false;
+  const d = new Date(`${wert}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === wert;
+}
+
+/**
+ * Obergrenze fuer eine hochgeladene Datei. Siehe sync/quelle.ts - derselbe
+ * Grund, nur dass die Datei hier aus dem Formular kommt statt aus dem Netz.
+ */
+const MAX_UPLOAD = 40 * 1024 * 1024;
+
+/**
  * Uebersicht je Gewerk fuer die Startseite.
  * Rot schlaegt gelb schlaegt gruen - der schlechteste Stand bestimmt die Farbe,
  * damit ein Fehler nicht hinter vierzehn gruenen Haken verschwindet.
@@ -204,7 +226,17 @@ async function hochladen(env: Env, request: Request): Promise<Response> {
   const vorhandenesDokument = String(form.get("dokument_id") ?? "").trim() || null;
 
   if (!gewerk) return fehler("Gewerk fehlt");
+  if (!GEWERKE.includes(gewerk))
+    return fehler(`Unbekanntes Gewerk „${gewerk}". Erlaubt: ${GEWERKE.join(", ")}`);
   if (!titel && !vorhandenesDokument) return fehler("Titel fehlt");
+  if (gueltigAb && !datumStimmt(gueltigAb))
+    return fehler("Gültig ab: bitte als JJJJ-MM-TT angeben, z. B. 2026-01-01");
+  if (datei.size > MAX_UPLOAD)
+    return fehler(
+      `Die Datei ist mit ${(datei.size / 1024 / 1024).toFixed(1)} MB zu groß ` +
+        `(Grenze ${(MAX_UPLOAD / 1024 / 1024).toFixed(1)} MB).`,
+      413,
+    );
 
   const wer = (await sitzungPruefen(request, env)) ?? "unbekannt";
   const zeit = stempel();
@@ -354,8 +386,9 @@ async function dokumentAendern(env: Env, id: string, request: Request): Promise<
   if (!("gueltig_ab" in koerper)) return fehler("Nichts zu ändern");
 
   const wert = koerper.gueltig_ab?.trim() || null;
-  if (wert && !/^\d{4}-\d{2}-\d{2}$/.test(wert))
-    return fehler("Datum bitte als JJJJ-MM-TT angeben");
+  // Nicht nur die Form, auch den Tag: 2026-02-31 sieht richtig aus und ist es
+  // nicht.
+  if (wert && !datumStimmt(wert)) return fehler("Datum bitte als JJJJ-MM-TT angeben");
 
   const ergebnis = await env.DB.prepare("UPDATE dokumente SET gueltig_ab = ? WHERE id = ?")
     .bind(wert, id)
@@ -372,11 +405,17 @@ async function quelleAendern(env: Env, id: string, request: Request): Promise<Re
   const werte: unknown[] = [];
 
   if (koerper.url !== undefined) {
+    let adresse: URL;
     try {
-      new URL(koerper.url);
+      adresse = new URL(koerper.url);
     } catch {
       return fehler("Das ist keine gültige Adresse");
     }
+    // new URL() nimmt auch ftp: und http: an. Ein Tarifvertrag, den jemand
+    // unterwegs veraendern kann, ist keiner - und die Datenbank weist es
+    // ohnehin ab, nur mit einer Meldung, die hier niemand lesen will.
+    if (adresse.protocol !== "https:")
+      return fehler("Die Adresse muss mit https:// beginnen");
     setzen.push("url = ?");
     werte.push(koerper.url);
   }
@@ -429,7 +468,7 @@ export async function apiRouten(
    *
    * Ohne das zeigt die Seite Knoepfe, die nicht funktionieren koennen, und
    * antwortet auf jeden Druck mit einer roten Fehlermeldung - fuer einen
-   * Zustand, der voellig erwartbar ist, solange Access noch nicht steht.
+   * Zustand, der voellig erwartbar ist, solange niemand angemeldet ist.
    */
   /**
    * Laeuft der Dienst noch? Oeffentlich und ohne Nebenwirkung.

@@ -4,7 +4,8 @@ import { apiRouten } from "./api/routen";
 import { oauthRouten } from "./auth/oauth";
 
 export { Bremse } from "./auth/bremse";
-import { fehler, json } from "./lib/antwort";
+import { fehler } from "./lib/antwort";
+import { meldungAnlegen } from "./lib/db";
 import type { Env } from "./lib/typen";
 import { mcpHandler, toolsJson } from "./mcp/server";
 import { alleQuellenAnstossen } from "./sync/cron";
@@ -14,9 +15,8 @@ import { quelleAbrufen } from "./sync/quelle";
  * Die Seite: Dashboard, JSON-Schnittstelle, der interne Abrufweg und die
  * Anmeldemasken des MCP.
  *
- * Alles hier liegt hinter Cloudflare Access - mit Ausnahme der Pfade, die zur
- * MCP-Anmeldung gehoeren. Die brauchen einen Bypass, weil Claude sie aufruft,
- * bevor irgendjemand angemeldet ist. Siehe SETUP.md.
+ * Lesen geht ohne Anmeldung. Geschrieben wird nur mit gueltiger Sitzung - das
+ * Tor dafuer steht in api/routen.ts, baulich vor allen Schreibrouten.
  */
 const seitenHandler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -80,9 +80,10 @@ const mcpApiHandler = {
 /**
  * Eigener Autorisierungsserver.
  *
- * Noetig, weil Claude sich per Dynamic Client Registration anmeldet - das
- * kennt Cloudflare Access fuer SaaS nicht. Dieser Worker stellt darum eigene
- * Tokens aus und benutzt Access nur als Anmeldeverfahren dahinter.
+ * Noetig, weil Claude sich per Dynamic Client Registration anmeldet: der
+ * Client ist vorher nicht bekannt und registriert sich selbst. Dieser Worker
+ * stellt darum eigene Tokens aus; dahinter steht dieselbe Anmeldung mit
+ * Benutzername und Passwort wie auf der Seite.
  */
 const provider = new OAuthProvider<Env>({
   apiHandlers: { "/mcp": mcpApiHandler },
@@ -104,13 +105,38 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
       (async () => {
-        const ergebnisse = await alleQuellenAnstossen(env);
-        const geaendert = ergebnisse.filter((e) => e.status === "ok").length;
-        const fehlgeschlagen = ergebnisse.filter((e) => e.status === "fehler").length;
-        console.log(
-          `Tarifcheck: ${ergebnisse.length} Quellen, ${geaendert} mit Änderung, ` +
-            `${fehlgeschlagen} fehlgeschlagen`,
-        );
+        try {
+          const ergebnisse = await alleQuellenAnstossen(env);
+          const geaendert = ergebnisse.filter((e) => e.status === "ok").length;
+          const fehlgeschlagen = ergebnisse.filter((e) => e.status === "fehler").length;
+          console.log(
+            `Tarifcheck: ${ergebnisse.length} Quellen, ${geaendert} mit Änderung, ` +
+              `${fehlgeschlagen} fehlgeschlagen`,
+          );
+        } catch (e) {
+          // Scheitert der Lauf als Ganzes - Selbstbindung weg, Datenbank nicht
+          // erreichbar -, dann scheitert er fuer jede Quelle zugleich, und
+          // keine einzelne kann es vermerken. Ohne diese Meldung stuende auf
+          // der Seite weiter der Stand von gestern, ohne jeden Hinweis darauf,
+          // dass seither nichts mehr geprueft wurde.
+          const text = e instanceof Error ? e.message : String(e);
+          console.error("Täglicher Lauf komplett gescheitert", e);
+          try {
+            await meldungAnlegen(env, {
+              art: "fehler",
+              titel: "Täglicher Lauf komplett gescheitert",
+              beschreibung:
+                `Der Lauf ist abgebrochen, bevor auch nur eine Quelle geprüft ` +
+                `werden konnte: ${text}\n\n` +
+                `Solange das so bleibt, veraltet der gesamte Bestand still. ` +
+                `Unter "Übersicht" steht, wann zuletzt wirklich geprüft wurde; ` +
+                `/api/gesundheit meldet dasselbe als "lauf_ueberfaellig".`,
+            });
+          } catch {
+            // Wenn nicht einmal das geht, ist die Datenbank selbst weg. Dann
+            // bleibt nur das Log - und der ueberfaellige Stand auf der Seite.
+          }
+        }
 
         // Abgelaufene Tokens und verwaiste Grants aus dem KV raeumen. Ohne das
         // waechst die Namespace mit jeder Anmeldung, die nie benutzt wurde.

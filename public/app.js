@@ -48,6 +48,9 @@ const GEWERKE = {
 
 const gw = (k) => GEWERKE[k] ?? { name: k, farbe: "#6e6e78", glyph: `<circle cx="12" cy="12" r="7"/>` };
 
+/** Dieselbe Grenze wie im Worker (api/routen.ts). */
+const MAX_UPLOAD = 40 * 1024 * 1024;
+
 function marke(gewerk, klasse = "marke") {
   const g = gw(gewerk);
   return `<span class="${klasse}" style="background:${g.farbe}1f">
@@ -377,7 +380,7 @@ async function hochladen() {
         steht danach gleichwertig zur Verfügung.
       </p>
       <form id="up">
-        <label>Datei
+        <label>Datei <span class="freiwillig">— höchstens 40 MB</span>
           <input class="feld" type="file" name="datei" required
                  accept=".pdf,.docx,.doc,.html,.htm,.txt,.md,.png,.jpg,.jpeg"></label>
         <label>Gewerk
@@ -403,6 +406,17 @@ async function hochladen() {
     e.preventDefault();
     const form = e.currentTarget;
     const knopf = form.querySelector("button");
+
+    // Der Server weist zu große Dateien ab — aber erst, nachdem sie oben sind.
+    // Bei einem eingescannten Vertrag über eine schmale Leitung sind das
+    // Minuten für ein Nein, das man vorher haben kann.
+    const datei = form.datei.files[0];
+    if (datei && datei.size > MAX_UPLOAD) {
+      melden(`Die Datei ist mit ${(datei.size / 1024 / 1024).toFixed(1)} MB zu groß ` +
+             `(Grenze ${(MAX_UPLOAD / 1024 / 1024).toFixed(0)} MB).`, "schlecht");
+      return;
+    }
+
     knopf.disabled = true;
     knopf.textContent = "Wird verarbeitet …";
     try {
