@@ -88,28 +88,30 @@ Bewusst **kein** kontoweites Limit: das klingt gründlicher, öffnet aber eine T
 genug Fehlversuche schickt, sperrte damit die Kollegen aus. Gegen verteiltes Raten
 schützt hier die Länge des Passworts, nicht die Bremse.
 
-### Wartungsschlüssel für die wöchentliche Routine
+### Wartungsschlüssel — vorhanden, aber derzeit nicht in Gebrauch
 
-Eine wöchentliche Claude-Routine prüft montags, ob die Quellen-Links noch stimmen, und
-trägt neue Adressen ein (siehe „Wöchentliche Quellenpflege" unter Betrieb). Sie hat keinen
-Menschen, kann sich also nicht anmelden, und bekommt deshalb einen eigenen Ausweis:
+Die wöchentliche Pflegeroutine schreibt zurzeit **nicht** über die API, sondern direkt in
+die D1-Datenbank (siehe „Wöchentliche Quellenpflege" unter Betrieb). Der Wartungsschlüssel
+ist der schmalere Weg dorthin und liegt bereit, falls man die Routine später enger führen
+will:
 
 ```bash
 openssl rand -base64 32 | tr -d '\n' | npx wrangler secret put PFLEGE_SCHLUESSEL
 ```
 
-Der Schlüssel wird als `Authorization: Bearer …` mitgeschickt und darf **genau eine**
-Sache: `PATCH /api/quellen/:id`, also eine Quellenadresse korrigieren. Hochladen, Löschen
-und das Ändern von Dokumenten bleiben der Anmeldung vorbehalten. Das ist Absicht — der
-Schlüssel steht im Text der Routine und ist damit schlechter geschützt als ein Passwort im
-Kopf eines Menschen, also darf er auch weniger. Wer ihn erbeutet, kann schlimmstenfalls
-einen Link verbiegen; das fällt beim nächsten Lauf auf und ist rückgängig zu machen.
+Er wird als `Authorization: Bearer …` mitgeschickt und darf **genau eine** Sache:
+`PATCH /api/quellen/:id`, also eine Quellenadresse korrigieren. Hochladen, Löschen und das
+Ändern von Dokumenten bleiben der Anmeldung vorbehalten. Das ist Absicht — der Schlüssel
+steht im Text der Routine und ist damit schlechter geschützt als ein Passwort im Kopf eines
+Menschen, also darf er auch weniger. Wer ihn erbeutet, kann schlimmstenfalls einen Link
+verbiegen; das fällt beim nächsten Lauf auf und ist rückgängig zu machen.
 
-Ist das Secret nicht gesetzt, greift das Tor nicht und die Routine bekommt 401. Sie
-schreibt die gefundene Korrektur dann in ihren Bericht, statt sie einzutragen.
+Ist das Secret nicht gesetzt — der heutige Stand — greift das Tor nicht und der Aufruf
+endet mit 401. Der Code ist damit wirkungslos, nicht offen.
 
-Zum Wechseln denselben Befehl noch einmal laufen lassen und den neuen Wert in den
-Routine-Text eintragen (claude.ai → Routines → „TarifCheck — wöchentliche Quellenpflege").
+Zum Umstellen: Secret setzen, deployen, im Routine-Text Schritt 5 von `d1_database_query`
+auf den PATCH umschreiben und den Connector „Cloudflare Developer Platform" aus der Routine
+entfernen.
 
 ## 4. Veröffentlichen
 
@@ -223,9 +225,20 @@ naturgemäß nicht, weil sie Urteilsvermögen brauchen:
 
 Dafür läuft eine Claude-Routine, montags 07:41 UTC (Sommer 09:41 deutscher Zeit), also
 gut eine Stunde nach dem täglichen Lauf. Sie prüft jede Adresse, sucht bei Bedarf die
-richtige neue — **ausschließlich** bei der amtlichen Stelle, nie bei einem Portal oder
-Verlag — und trägt sie über den Wartungsschlüssel ein. Das Ergebnis kommt per Push und
-E-Mail. Findet sie keine amtliche Quelle, ändert sie nichts und meldet es lieber.
+richtige neue — **ausschließlich** bei der herausgebenden Stelle, nie bei einem Portal oder
+Verlag — und trägt sie ein. Das Ergebnis kommt per Push und E-Mail. Findet sie keine
+Adresse bei der herausgebenden Stelle, ändert sie nichts und meldet es lieber.
+
+Geschrieben wird über den Connector „Cloudflare Developer Platform" direkt in D1:
+`UPDATE quellen SET url = ? WHERE id = ?`, danach wird `letzter_fehler` geräumt, damit die
+Meldung auf der Seite nicht rot stehen bleibt, bis der nächste Cron läuft.
+
+**Das ist die weite Variante.** Der Connector kann auch `d1_database_delete`,
+`r2_bucket_delete` und `kv_namespace_delete` — die Routine hält also jede Woche
+unbeaufsichtigt mehr Vollmacht, als sie braucht. Der Prompt zieht die Grenze ausdrücklich
+(nur `d1_database_query`, nur die dort wörtlich genannten Anweisungen, kein DROP/DELETE/
+INSERT/ALTER), aber das ist eine Anweisung und kein Riegel. Wer es enger will, stellt auf
+den Wartungsschlüssel um — siehe oben unter Anmeldung.
 
 Verwaltet wird sie unter claude.ai → Routines, Name „TarifCheck — wöchentliche
 Quellenpflege".
