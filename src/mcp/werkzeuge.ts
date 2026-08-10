@@ -278,6 +278,56 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
     },
   );
 
+  /**
+   * Fasst die Erstbefuellung zu einer Zeile zusammen.
+   *
+   * Am Tag der Einrichtung entsteht fuer jedes Dokument eine Meldung "neu
+   * aufgenommen" - hier siebzehn auf einmal. Ueber das Standardfenster von 90
+   * Tagen beantwortet das Werkzeug die Frage "was ist neu?" damit monatelang
+   * mit dem gesamten Bestand, und die eine echte Aenderung geht darin unter.
+   *
+   * Zusammengefasst wird nur, was am selben Tag in Menge auflief; verloren
+   * geht dabei nichts, die Titel stehen in der Beschreibung. Eine einzelne
+   * neue Quelle bleibt eine eigene Zeile - die ist echte Nachricht.
+   */
+  function erstbefuellungBuendeln(zeilen: any[]): any[] {
+    const proTag = new Map<string, number>();
+    for (const z of zeilen) {
+      if (z.art !== "neu") continue;
+      const tag = String(z.zeitpunkt).slice(0, 10);
+      proTag.set(tag, (proTag.get(tag) ?? 0) + 1);
+    }
+
+    const erledigt = new Set<string>();
+    const heraus: any[] = [];
+    for (const z of zeilen) {
+      const tag = String(z.zeitpunkt).slice(0, 10);
+      if (z.art !== "neu" || (proTag.get(tag) ?? 0) <= 3) {
+        heraus.push(z);
+        continue;
+      }
+      if (erledigt.has(tag)) continue;
+      erledigt.add(tag);
+
+      const gruppe = zeilen.filter(
+        (x) => x.art === "neu" && String(x.zeitpunkt).slice(0, 10) === tag,
+      );
+      heraus.push({
+        zeitpunkt: z.zeitpunkt,
+        art: "neu",
+        titel: `${gruppe.length} Dokumente erstmals aufgenommen`,
+        beschreibung:
+          `Erstbefüllung des Bestands, keine inhaltliche Änderung an einem Vertrag: ` +
+          gruppe.map((g) => g.dokument_titel ?? g.titel).join("; "),
+        gewerk: null,
+        dokument_id: null,
+        dokument_titel: null,
+        hinweis: null,
+      });
+    }
+    return heraus;
+  }
+
   server.registerTool(
     "was_ist_neu",
     {
@@ -327,7 +377,7 @@ export function werkzeugeAnmelden(server: McpServer, env: Env): void {
       return alsJson({
         zeitraum_ab: seit,
         gewerk: gewerk ?? "alle",
-        aenderungen: results,
+        aenderungen: erstbefuellungBuendeln(results),
         erlaeuterung:
           "Bei 'seite_geaendert' hat sich eine überwachte Downloadseite geändert, " +
           "nicht zwingend der Vertrag selbst — dort gibt es keine öffentliche " +

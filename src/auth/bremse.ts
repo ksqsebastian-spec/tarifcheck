@@ -47,6 +47,47 @@ export class Bremse extends DurableObject {
     await this.ctx.storage.deleteAll();
   }
 
+  /**
+   * Prueft sich selbst: zaehlt oefter, als erlaubt ist, und sieht nach, ob
+   * genau `grenze` Versuche durchkommen. Wer eine Schutzmassnahme nicht
+   * prueft, hat sie nicht - der erste Anlauf ueber KV sah funktionsfaehig aus
+   * und war es nicht.
+   *
+   * Der Test lief frueher im Gesundheitsendpunkt selbst: je Aufruf eine neue
+   * Instanz, 26 Runden ueber die Leitung und 13 Schreibvorgaenge - auf einem
+   * oeffentlichen Pfad ohne Bremse davor. Jetzt laeuft die Schleife
+   * vollstaendig hier drin, in einer Instanz mit festem Namen, und das
+   * Ergebnis haelt eine Weile. Von aussen bleibt eine Runde.
+   */
+  async selbsttest(grenze: number, fensterMs: number, haltbarMs: number): Promise<string> {
+    const zwischen = await this.ctx.storage.get<{ zeit: number; ergebnis: string }>("selbsttest");
+    if (zwischen && Date.now() - zwischen.zeit < haltbarMs) return zwischen.ergebnis;
+
+    // Auf einem sauberen Zaehler beginnen, sonst misst der Test den Rest des
+    // vorigen Laufs mit.
+    await this.ctx.storage.delete("stand");
+
+    const versuche = grenze + 3;
+    let durchgelassen = 0;
+    for (let i = 0; i < versuche; i++) {
+      if (await this.offen(grenze, fensterMs)) durchgelassen++;
+      await this.fehlversuch(fensterMs);
+    }
+    await this.ctx.storage.delete("stand");
+
+    const ergebnis =
+      durchgelassen === grenze
+        ? "ok"
+        : `WIRKUNGSLOS (${durchgelassen}/${versuche} durchgelassen)`;
+
+    await this.ctx.storage.put("selbsttest", { zeit: Date.now(), ergebnis });
+    // `fehlversuch` hat unterwegs einen Alarm gesetzt, der in zwei Minuten
+    // alles loeschen wuerde - damit waere das gemerkte Ergebnis sofort wieder
+    // weg. Stattdessen genau dann aufraeumen, wenn es ohnehin veraltet.
+    await this.ctx.storage.setAlarm(Date.now() + haltbarMs);
+    return ergebnis;
+  }
+
   async alarm(): Promise<void> {
     await this.ctx.storage.deleteAll();
   }

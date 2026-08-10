@@ -68,6 +68,19 @@ const KOPFBEREICH = 2500;
 const iso = (t: number, m: number, j: number) =>
   `${j}-${String(m).padStart(2, "0")}-${String(t).padStart(2, "0")}`;
 
+/**
+ * Gibt es den Tag wirklich?
+ *
+ * `tag > 31` liess den 31. Februar und den Tag 00 durch. Die Oberflaeche bot
+ * so ein Datum als "uebernehmen" an, und der Server wies es beim Klick
+ * korrekt ab - ein Knopf, der scheitern muss. Dieselbe Strenge, die
+ * api/routen.ts beim Eintragen anlegt, gehoert schon hierher.
+ */
+function tagGibtEs(t: number, m: number, j: number): boolean {
+  const d = new Date(Date.UTC(j, m - 1, t));
+  return d.getUTCFullYear() === j && d.getUTCMonth() === m - 1 && d.getUTCDate() === t;
+}
+
 /** Ein Satz um die Fundstelle, zum Zitieren - nicht zum Deuten. */
 function satzUm(text: string, pos: number, laenge: number): string {
   const von = Math.max(0, pos - 100);
@@ -107,7 +120,8 @@ export function datumsFunde(markdown: string, hoechstens = 4): DatumsFund[] {
       const tag = Number(treffer[1]);
       const monat = i === 0 ? MONATE[treffer[2].toLowerCase()] : Number(treffer[2]);
       const jahr = Number(treffer[3]);
-      if (!monat || monat > 12 || tag > 31 || jahr < 1950 || jahr > 2100) continue;
+      if (!monat || monat > 12 || jahr < 1950 || jahr > 2100) continue;
+      if (!tagGibtEs(tag, monat, jahr)) continue;
 
       const schluessel = `${iso(tag, monat, jahr)}|${art}`;
       if (!funde.has(schluessel)) {

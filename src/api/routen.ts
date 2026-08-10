@@ -89,6 +89,26 @@ function datumStimmt(wert: string): boolean {
 const MAX_UPLOAD = 40 * 1024 * 1024;
 
 /**
+ * Liest eine Obergrenze aus der Adresse.
+ *
+ * `Math.min(Number(x), 300)` sah nach einer Grenze aus und war keine, gleich
+ * zweimal: "abc" wurde zu NaN und ging so an die Datenbank, die mit
+ * SQLITE_MISMATCH abbrach - ein 500 samt Datenbank-Interna fuer einen
+ * Tippfehler. Und "-1" heisst in SQLite "kein Limit", hob die Obergrenze also
+ * gerade auf. Gedeckelt werden muss nach beiden Seiten.
+ *
+ * Gibt null zurueck, wenn die Angabe keine brauchbare Zahl ist - der Aufrufer
+ * macht daraus einen 400 mit Klartext.
+ */
+function grenzeAus(url: URL, vorgabe: number, hoechstens: number): number | null {
+  const roh = url.searchParams.get("limit");
+  if (roh === null || roh === "") return vorgabe;
+  const n = Number(roh);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return Math.min(n, hoechstens);
+}
+
+/**
  * Uebersicht je Gewerk fuer die Startseite.
  * Rot schlaegt gelb schlaegt gruen - der schlechteste Stand bestimmt die Farbe,
  * damit ein Fehler nicht hinter vierzehn gruenen Haken verschwindet.
@@ -177,7 +197,9 @@ async function dokumentDetail(env: Env, id: string): Promise<Response> {
 
 async function meldungen(env: Env, url: URL): Promise<Response> {
   const nurUngelesen = url.searchParams.get("ungelesen") === "1";
-  const grenze = Math.min(Number(url.searchParams.get("limit") ?? 100), 300);
+  const grenze = grenzeAus(url, 100, 300);
+  if (grenze === null)
+    return fehler("limit bitte als ganze Zahl ab 1 angeben, höchstens 300.");
 
   const { results } = await env.DB.prepare(
     `SELECT m.*, d.titel AS dokument_titel
@@ -193,7 +215,12 @@ async function meldungen(env: Env, url: URL): Promise<Response> {
 }
 
 async function meldungenGelesen(env: Env, request: Request): Promise<Response> {
-  const koerper = await request.json<{ ids?: number[]; alle?: boolean }>();
+  // Ohne .catch() endete ein kaputter Rumpf als 500 - ein Fehler des
+  // Aufrufers, angezeigt als Fehler des Servers.
+  const koerper = await request
+    .json<{ ids?: number[]; alle?: boolean }>()
+    .catch(() => null);
+  if (!koerper) return fehler("Der Rumpf der Anfrage ist kein gültiges JSON");
 
   if (koerper.alle) {
     await env.DB.prepare("UPDATE meldungen SET gelesen = 1 WHERE gelesen = 0").run();
@@ -201,9 +228,14 @@ async function meldungenGelesen(env: Env, request: Request): Promise<Response> {
   }
   if (!koerper.ids?.length) return fehler("Weder ids noch alle angegeben");
 
-  const platzhalter = koerper.ids.map(() => "?").join(",");
+  // Nur ganze Zahlen, und nicht beliebig viele: die Zahl der Platzhalter geht
+  // eins zu eins in die Anweisung, und SQLite nimmt nicht unbegrenzt viele.
+  const ids = koerper.ids.filter((n) => Number.isInteger(n)).slice(0, 300);
+  if (!ids.length) return fehler("ids bitte als Liste ganzer Zahlen angeben");
+
+  const platzhalter = ids.map(() => "?").join(",");
   await env.DB.prepare(`UPDATE meldungen SET gelesen = 1 WHERE id IN (${platzhalter})`)
-    .bind(...koerper.ids)
+    .bind(...ids)
     .run();
   return json({ ok: true });
 }
@@ -400,7 +432,11 @@ async function dokumentAendern(env: Env, id: string, request: Request): Promise<
 
 /** Adresse nachziehen, wenn ein Betreiber seine Seite umgebaut hat. */
 async function quelleAendern(env: Env, id: string, request: Request): Promise<Response> {
-  const koerper = await request.json<{ url?: string; aktiv?: boolean }>();
+  const koerper = await request
+    .json<{ url?: string; aktiv?: boolean }>()
+    .catch(() => null);
+  if (!koerper) return fehler("Der Rumpf der Anfrage ist kein gültiges JSON");
+
   const setzen: string[] = [];
   const werte: unknown[] = [];
 
@@ -499,24 +535,25 @@ export async function apiRouten(
       ? Math.round((Date.now() - new Date(zuletzt).getTime()) / 3600_000)
       : null;
 
-    // Selbsttest der Bremse: mit einem eigenen Schluessel oefter zaehlen, als
-    // erlaubt ist. Wer eine Schutzmassnahme nicht prueft, hat sie nicht.
-    // Der erste Anlauf ueber KV sah funktionsfaehig aus und war es nicht.
+    // Selbsttest der Bremse. Die Schleife laeuft in der Bremse selbst, unter
+    // festem Namen und mit gemerktem Ergebnis - dieser Pfad ist oeffentlich
+    // und ohne Bremse davor, und der fruehere Test legte je Aufruf eine neue
+    // Instanz an und schrieb dreizehnmal. Von hier aus ist es jetzt eine Runde.
     let bremse = "fehler";
     try {
-      // Eigener Schluessel je Aufruf, damit der Selbsttest niemanden aussperrt.
-      const punkt = env.BREMSE.get(env.BREMSE.idFromName(`selbsttest:${crypto.randomUUID()}`));
-      let durchgelassen = 0;
-      for (let i = 0; i < 13; i++) {
-        if (await punkt.offen(10, 60_000)) durchgelassen++;
-        await punkt.fehlversuch(60_000);
-      }
-      bremse = durchgelassen === 10 ? "ok" : `WIRKUNGSLOS (${durchgelassen}/13 durchgelassen)`;
+      bremse = await env.BREMSE.get(env.BREMSE.idFromName("selbsttest")).selbsttest(
+        10,
+        60_000,
+        10 * 60_000,
+      );
     } catch (e) {
       bremse = `fehler: ${e instanceof Error ? e.message : String(e)}`;
     }
 
     return json({
+      // Welche Fassung hier antwortet. Der Deploy pollt darauf, bis die neue
+      // erscheint - sonst prueft er die vorige und ist immer zufrieden.
+      fassung: env.FASSUNG?.id ?? null,
       selbstbindung,
       bremse,
       cron: "15 6 * * * (UTC)",
@@ -550,6 +587,23 @@ export async function apiRouten(
   // waere der Schluessel mit der Zeit unbemerkt ein zweites Passwort.
   if (p.startsWith("/api/quellen/") && m === "PATCH" && pflegeschluesselStimmt(request, env))
     return quelleAendern(env, decodeURIComponent(p.slice("/api/quellen/".length)), request);
+
+  /**
+   * Gibt es diesen Pfad ueberhaupt? Gefragt VOR dem Anmeldetor.
+   *
+   * Sonst beantwortet jeder Tippfehler im Pfad die Frage mit "Nicht
+   * angemeldet": das Tor stand vor dem `return null`, und der 404 unten war
+   * fuer nicht angemeldete Aufrufer damit unerreichbar. Wer einen falsch
+   * geschriebenen Endpunkt debuggt, sucht dann beim Passwort statt beim
+   * Buchstaben.
+   */
+  const istSchreibpfad =
+    (p === "/api/meldungen/gelesen" && m === "POST") ||
+    (p === "/api/upload" && m === "POST") ||
+    (p === "/api/sync" && m === "POST") ||
+    (p.startsWith("/api/dokumente/") && m === "PATCH") ||
+    (p.startsWith("/api/quellen/") && m === "PATCH");
+  if (!istSchreibpfad) return null;
 
   // Ab hier wird geschrieben. Ohne gueltige Sitzung geht nichts.
   const schreiben = await sitzungPruefen(request, env);

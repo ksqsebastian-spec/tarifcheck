@@ -76,6 +76,14 @@
     }
   ],
 
+  // Kennung der ausgerollten Fassung.
+  //
+  // Damit der Deploy pruefen kann, ob wirklich die NEUE Fassung antwortet.
+  // Vorher sah er nur nach, ob ueberhaupt jemand antwortet - was die vorige
+  // Fassung waehrend der ein bis zwei Minuten Rollout genauso tut. Der Check
+  // war damit immer gruen und sagte nichts.
+  "version_metadata": { "binding": "FASSUNG" },
+
   "observability": {
     "enabled": true
   },

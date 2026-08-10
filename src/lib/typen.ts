@@ -22,6 +22,14 @@ export interface Env {
   /** Bremse gegen das Durchprobieren von Passwoertern. */
   BREMSE: DurableObjectNamespace<import("../auth/bremse").Bremse>;
 
+  /**
+   * Kennung der laufenden Fassung, von der Laufzeitumgebung gesetzt.
+   *
+   * Steht in /api/gesundheit, damit der Deploy nachsehen kann, ob schon die
+   * neue Fassung antwortet und nicht mehr die vorige.
+   */
+  FASSUNG: { id: string; tag: string };
+
   // Anmeldung. Als Secrets gesetzt, siehe SETUP.md.
   LOGIN_BENUTZER?: string;
   /** PBKDF2-Hash im Format pbkdf2$<runden>$<salz>$<hash>. Nie das Klartextpasswort. */
