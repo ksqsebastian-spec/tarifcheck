@@ -44,9 +44,10 @@ Die Liste steht in DATENMODELL.md §7.
 anwenden.
 
 **Der Rollout täuscht.** Nach einem Deploy antworten für ein bis zwei Minuten noch alte
-Fassungen. Wer direkt danach testet, prüft womöglich den Vorgängerstand. Also so lange
-gegen `/api/gesundheit` pollen, bis das neue Verhalten erscheint — das hat hier mehrfach zu
-falschen Schlüssen geführt.
+Fassungen. Wer direkt danach von Hand testet, prüft womöglich den Vorgängerstand — das hat
+hier mehrfach zu falschen Schlüssen geführt. `/api/gesundheit` nennt darum unter `fassung`
+die Kennung der Fassung, die gerade antwortet; so lange pollen, bis die neue erscheint. Der
+Deploy-Workflow tut genau das inzwischen selbst und wird erst dann grün.
 
 **Der MCP ist nur lesend.** Geschrieben wird ausschließlich über die Seite hinter der
 Anmeldung, oder von der Pflegeroutine direkt in D1.

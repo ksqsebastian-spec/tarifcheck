@@ -160,8 +160,9 @@ Die Antwort prüft mehr, als ob der Worker antwortet:
 
 | Feld | Bedeutung |
 |---|---|
+| `fassung` | Kennung der Fassung, die gerade antwortet. Nach einem Deploy steht hier ein bis zwei Minuten noch die vorige — daran erkennt man, ob man schon den neuen Stand prüft. |
 | `selbstbindung` | Erreicht der tägliche Lauf seine Arbeitsschritte? Ist das kaputt, tut der Cron stillschweigend nichts. |
-| `bremse` | Sperrt die Anmeldebremse wirklich? Sie ist zweimal wirkungslos gewesen, ohne dass man es sah. |
+| `bremse` | Sperrt die Anmeldebremse wirklich? Sie ist zweimal wirkungslos gewesen, ohne dass man es sah. Das Ergebnis wird zehn Minuten gemerkt — der Test selbst schreibt, und dieser Pfad ist öffentlich. |
 | `zuletzt_geprueft` | Wann zuletzt wirklich abgerufen wurde |
 | `lauf_ueberfaellig` | `true`, wenn seit über 36 Stunden nichts lief |
 | `durchsuchbar` | Wie viele der Dokumente Volltext haben |

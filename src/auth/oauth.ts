@@ -170,7 +170,30 @@ export async function oauthRouten(
   url: URL,
 ): Promise<Response | null> {
   if (url.pathname !== "/authorize") return null;
-  if (request.method === "GET") return autorisieren(request, env);
-  if (request.method === "POST") return bestaetigen(request, env);
-  return null;
+
+  /**
+   * Eine unbrauchbare Anfrage darf keine Ausnahme werden.
+   *
+   * `parseAuthRequest` wirft, sobald Parameter fehlen oder der Client
+   * unbekannt ist. Der Worker antwortete dann mit "error code: 1101" - eine
+   * Meldung, aus der niemand etwas ablesen kann, und die jeder zu sehen
+   * bekommt, der die Adresse ohne Claude aufruft.
+   */
+  try {
+    if (request.method === "GET") return await autorisieren(request, env);
+    if (request.method === "POST") return await bestaetigen(request, env);
+    return null;
+  } catch (e) {
+    console.error("Anmeldung des MCP fehlgeschlagen", url.pathname, e);
+    return seite(
+      `<div class="karte">
+         <h2 style="margin-bottom:6px">Diese Anfrage lässt sich nicht zuordnen</h2>
+         <p class="meta">Diese Seite gehört zur Anmeldung des MCP-Zugangs und wird von
+         Claude aufgerufen — von Hand aufgerufen fehlen ihr die nötigen Angaben.
+         Zum Einrichten: in Claude unter Einstellungen → Connectors die Adresse
+         <code>/mcp</code> hinzufügen.</p>
+       </div>`,
+      400,
+    );
+  }
 }
