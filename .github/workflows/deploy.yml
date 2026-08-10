@@ -1,0 +1,69 @@
+# Veroeffentlichen, ohne jedes Mal ein Token von Hand zu erzeugen.
+#
+# Anlass: das Token-Besorgen hat dreimal hintereinander die Arbeit aufgehalten,
+# weil die kurzlebigen Token zwischen zwei Sitzungen ablaufen. Hier liegt es
+# einmal als Repository-Secret, und niemand muss es je wieder durchreichen.
+#
+# Einrichtung siehe SETUP.md, Abschnitt "Veroeffentlichen".
+
+name: Deploy
+
+on:
+  push:
+    branches: [claude/cloudflare-tarifvertrag-dashboard-bdyi0l]
+    # Aenderungen, die den Worker nicht betreffen, muessen ihn auch nicht neu
+    # ausrollen. Eine Zeile in der README ist kein Grund fuer eine neue Fassung.
+    paths-ignore:
+      - "**/*.md"
+      - ".gitignore"
+  workflow_dispatch:
+
+# Zwei Laeufe gleichzeitig wuerden sich gegenseitig ueberholen: der langsamere
+# ueberschriebe am Ende den neueren Stand.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Erst pruefen, dann ausrollen. Ein Tippfehler im TypeScript soll hier
+      # auffallen und nicht auf der Seite - der Worker laeuft sonst weiter mit
+      # der letzten heilen Fassung, was gut ist, aber niemand merkt es.
+      - name: Typen pruefen
+        run: npm run typecheck
+
+      - name: Datenbank-Migrationen anwenden
+        run: npx wrangler d1 migrations apply tarifcheck --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Veroeffentlichen
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      # Der Deploy meldet Erfolg, sobald die Datei oben ist. Ob der Worker
+      # danach auch antwortet, ist eine andere Frage - und genau die, die
+      # zaehlt. Die Ausrollung braucht einen Moment, daher mehrere Versuche.
+      - name: Nachsehen, ob die Seite lebt
+        run: |
+          for i in $(seq 1 10); do
+            antwort=$(curl -sf https://tarifcheck.ksqsebastian.workers.dev/api/gesundheit) && \
+              echo "$antwort" | grep -q '"selbstbindung":"ok"' && \
+              { echo "$antwort"; exit 0; }
+            echo "Versuch $i: noch nicht bereit"
+            sleep 6
+          done
+          echo "Die Seite antwortet nach dem Deploy nicht wie erwartet."
+          exit 1

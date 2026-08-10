@@ -115,6 +115,37 @@ entfernen.
 
 ## 4. Veröffentlichen
 
+Im Normalfall gar nicht von Hand: `.github/workflows/deploy.yml` rollt bei jedem Push auf
+den Arbeitsbranch aus — Typen prüfen, Migrationen anwenden, veröffentlichen, und
+anschließend nachsehen, ob die Seite auch wirklich antwortet. Schlägt die Typprüfung fehl,
+wird nicht ausgerollt; der Worker läuft dann mit der letzten heilen Fassung weiter.
+
+**Einmal einzurichten:** ein Cloudflare-Token erzeugen und als Repository-Secret
+hinterlegen.
+
+1. dash.cloudflare.com → Profil → **API Tokens** → *Create Custom Token*.
+   **Kein TTL setzen** — ein ablaufendes Token bringt die Veröffentlichung genau dann zum
+   Stehen, wenn man sie braucht. Berechtigungen:
+
+   | Bereich | Recht |
+   |---|---|
+   | Account · Workers Scripts | Edit |
+   | Account · Workers KV Storage | Edit |
+   | Account · Workers R2 Storage | Edit |
+   | Account · D1 | Edit |
+   | Account · Workers AI | Edit |
+   | User · User Details | Read |
+   | User · Memberships | Read |
+
+   Account Resources: *Include* → das eigene Konto.
+
+2. github.com/ksqsebastian-spec/tarifcheck → Settings → Secrets and variables → Actions →
+   *New repository secret*, Name `CLOUDFLARE_API_TOKEN`, Wert einfügen.
+
+Danach genügt ein Push. Unter *Actions* steht, ob es geklappt hat.
+
+**Von Hand**, falls nötig:
+
 ```bash
 npm run deploy
 ```
