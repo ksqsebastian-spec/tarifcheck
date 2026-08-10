@@ -12,6 +12,9 @@ Die Seite steht unter https://tarifcheck.ksqsebastian.workers.dev und ist fertig
 - **Täglicher Abruf** um 06:15 UTC (Sommer 08:15 deutscher Zeit). Läuft seit dem
   07.08. selbstständig durch.
 - **MCP** unter `/mcp`, OAuth mit Dynamic Client Registration, sechs Werkzeuge, nur lesend.
+- **Veröffentlichen über GitHub Actions.** Das Secret `CLOUDFLARE_API_TOKEN` liegt seit dem
+  10.08. im Repository; der Workflow ist einmal vollständig durchgelaufen (Typen,
+  Migrationen, Deploy, Gesundheits-Check). Von Hand mit `npm run deploy` geht weiterhin.
 - **Anmeldung** mit Benutzername und Passwort; Lesen geht ohne, Schreiben nicht.
   Fehlversuche bremst ein Durable Object.
 - **Wöchentliche Pflegeroutine**, montags 07:41 UTC. Prüft, ob die Quellen-Links noch
@@ -26,7 +29,6 @@ Nichts davon hält das System auf. Es läuft auch, wenn nichts davon passiert.
 | Was | Wer | Warum |
 |---|---|---|
 | Passwort ändern | Kontoinhaber | Das aktuelle stand im Chatverlauf. SETUP.md §3. |
-| GitHub-Secret `CLOUDFLARE_API_TOKEN` setzen | Kontoinhaber | Nur nötig, damit der Deploy-Workflow greift. Ohne ihn deployt man wie bisher von Hand mit `npm run deploy`. Token **ohne TTL** erzeugen, siehe SETUP.md §4. |
 | Tischler und Lohn-TV Gerüstbau hochladen | Kontoinhaber | Liegen nur im Mitgliederbereich, es gibt keine öffentliche Quelle. Bis dahin ist für diese beiden nur eine Downloadseite überwacht, kein Vertragstext. |
 
 ## Was man wissen muss, bevor man etwas anfasst
