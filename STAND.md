@@ -16,7 +16,8 @@ Die Seite steht unter https://tarifcheck.ksqsebastian.workers.dev und ist fertig
   Fehlversuche bremst ein Durable Object.
 - **Wöchentliche Pflegeroutine**, montags 07:41 UTC. Prüft, ob die Quellen-Links noch
   stimmen, sucht bei Bedarf die neue Adresse bei der herausgebenden Stelle und trägt sie
-  ein. Bericht per Push und E-Mail.
+  ein. Bericht per Push und E-Mail. Sie hängt nur noch am Connector „Cloudflare Developer
+  Platform"; der Voll-Connector „Cloudflare" ist entfernt (10.08.2026).
 
 ## Offen
 
@@ -24,7 +25,6 @@ Nichts davon hält das System auf. Es läuft auch, wenn nichts davon passiert.
 
 | Was | Wer | Warum |
 |---|---|---|
-| Connector **„Cloudflare"** aus der Routine entfernen | nur über claude.ai → Routines | Der kann beliebige Konto-Aktionen (Worker löschen, Token ausstellen). Die Routine braucht nur „Cloudflare Developer Platform". **Das ist der einzige Punkt mit Sicherheitsbezug.** |
 | Passwort ändern | Kontoinhaber | Das aktuelle stand im Chatverlauf. SETUP.md §3. |
 | GitHub-Secret `CLOUDFLARE_API_TOKEN` setzen | Kontoinhaber | Nur nötig, damit der Deploy-Workflow greift. Ohne ihn deployt man wie bisher von Hand mit `npm run deploy`. Token **ohne TTL** erzeugen, siehe SETUP.md §4. |
 | Tischler und Lohn-TV Gerüstbau hochladen | Kontoinhaber | Liegen nur im Mitgliederbereich, es gibt keine öffentliche Quelle. Bis dahin ist für diese beiden nur eine Downloadseite überwacht, kein Vertragstext. |
