@@ -6,6 +6,7 @@ import { oauthRouten } from "./auth/oauth";
 export { Bremse } from "./auth/bremse";
 import { fehler } from "./lib/antwort";
 import { meldungAnlegen } from "./lib/db";
+import { ICON_ICO, ICON_PNG_180, ICON_PNG_512, ICON_SVG } from "./lib/icons.generated";
 import type { Env } from "./lib/typen";
 import { mcpHandler, toolsJson } from "./mcp/server";
 import { alleQuellenAnstossen } from "./sync/cron";
@@ -18,6 +19,26 @@ import { quelleAbrufen } from "./sync/quelle";
  * Lesen geht ohne Anmeldung. Geschrieben wird nur mit gueltiger Sitzung - das
  * Tor dafuer steht in api/routen.ts, baulich vor allen Schreibrouten.
  */
+/* Base64 einmal beim Kaltstart auspacken, danach aus dem Speicher ausliefern. */
+const ICON_CACHE = new Map<string, Uint8Array>();
+
+function bild(b64: string, typ: string): Response {
+  let bytes = ICON_CACHE.get(b64);
+  if (!bytes) {
+    const bin = atob(b64);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    ICON_CACHE.set(b64, bytes);
+  }
+  return new Response(bytes, {
+    headers: {
+      "content-type": typ,
+      "cache-control": "public, max-age=86400",
+      "access-control-allow-origin": "*",
+    },
+  });
+}
+
 const seitenHandler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -25,6 +46,28 @@ const seitenHandler = {
     // Katalog fuer den MCP-Hub. Ohne Anmeldung, enthaelt nur Tool-Namen und
     // -Beschreibungen. Muss offen sein, damit der Hub ihn holen kann.
     if (url.pathname === "/tools.json") return toolsJson(env, ctx);
+
+    // Das Zeichen als Datei. Muss vor der Dateiauslieferung stehen: die steht auf
+    // single-page-application und wuerde jeden dieser Pfade als Startseite
+    // beantworten - also HTML zurueckgeben, wo ein Bild erwartet wird.
+    switch (url.pathname) {
+      case "/favicon.ico":
+        return bild(ICON_ICO, "image/x-icon");
+      case "/icon.png":
+        return bild(ICON_PNG_512, "image/png");
+      case "/apple-touch-icon.png":
+      case "/apple-touch-icon-precomposed.png":
+        return bild(ICON_PNG_180, "image/png");
+      case "/favicon.svg":
+      case "/icon.svg":
+        return new Response(ICON_SVG, {
+          headers: {
+            "content-type": "image/svg+xml; charset=utf-8",
+            "cache-control": "public, max-age=86400",
+            "access-control-allow-origin": "*",
+          },
+        });
+    }
 
     // Anmeldemaske des MCP unter /authorize
     const anmeldung = await oauthRouten(request, env as never, url);

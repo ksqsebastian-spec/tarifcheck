@@ -7,6 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "gen:icons": "node scripts/gen-icons.mjs",
     "migrate:local": "wrangler d1 migrations apply tarifcheck --local",
     "migrate": "wrangler d1 migrations apply tarifcheck --remote",
     "seed:local": "node scripts/seed-sources.mjs > .seed.sql && wrangler d1 execute tarifcheck --local --file=.seed.sql",
