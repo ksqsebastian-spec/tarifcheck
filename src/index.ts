@@ -3,6 +3,7 @@ import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { apiRouten } from "./api/routen";
 import { oauthRouten } from "./auth/oauth";
 
+export { TarifUpdate } from "./sync/workflow";
 export { Bremse } from "./auth/bremse";
 import { fehler } from "./lib/antwort";
 import { meldungAnlegen } from "./lib/db";
@@ -78,7 +79,7 @@ const seitenHandler = {
         return (await apiRouten(request, env, url)) ?? fehler("Unbekannter Endpunkt", 404);
       } catch (e) {
         console.error("API-Fehler", url.pathname, e);
-        return fehler(e instanceof Error ? e.message : String(e), 500);
+        return fehler("Die Anfrage konnte nicht verarbeitet werden. Bitte erneut versuchen.", 500);
       }
     }
 
@@ -138,8 +139,17 @@ const provider = new OAuthProvider<Env>({
 });
 
 export default {
-  fetch: (request: Request, env: Env, ctx: ExecutionContext) =>
-    provider.fetch(request, env, ctx),
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const response = await provider.fetch(request, env, ctx);
+    const result = new Response(response.body, response);
+    result.headers.set('X-Content-Type-Options', 'nosniff');
+    result.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    result.headers.set('X-Frame-Options', 'DENY');
+    result.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (new URL(request.url).pathname.startsWith('/api/')) result.headers.set('Cache-Control', 'no-store');
+    if (new URL(request.url).pathname === '/') result.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    return result;
+  },
 
   /**
    * Taeglicher Abruf. Der Handler selbst macht fast nichts - er verteilt die

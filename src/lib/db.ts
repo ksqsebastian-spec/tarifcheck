@@ -66,6 +66,10 @@ export async function pruefungVermerken(
   )
     .bind(jetzt(), status, fehlertext, dokumentId)
     .run();
+  if (status !== 'fehler') {
+    await env.DB.prepare("UPDATE meldungen SET gelesen = 1 WHERE dokument_id = ? AND art = 'fehler' AND titel LIKE 'Abruf fehlgeschlagen:%' AND gelesen = 0")
+      .bind(dokumentId).run();
+  }
 }
 
 /**

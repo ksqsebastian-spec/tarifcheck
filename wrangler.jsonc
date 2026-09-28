@@ -10,6 +10,9 @@
     "crons": ["15 6 * * *"]
   },
 
+  "workflows": [{ "name": "tarifcheck-update", "binding": "TARIF_UPDATE", "class_name": "TarifUpdate" }],
+  "vars": { "SCHEDULE_LABEL": "Täglich · Cloudflare (Umstellung auf ChatGPT vorbereitet)", "SCHEDULE_HOURS": "36" },
+
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

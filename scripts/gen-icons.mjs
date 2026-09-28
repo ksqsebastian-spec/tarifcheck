@@ -14,7 +14,7 @@
  *   node scripts/gen-icons.mjs
  */
 import { deflateSync } from "node:zlib";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,14 +30,7 @@ try {
 
 /* Dasselbe Zeichen wie im <link rel="icon"> von public/index.html: zwei Blaetter
    mit Haekchen. Hier auf 512 hochgezogen, damit die Rasterfassungen scharf sind. */
-const SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
-  '<rect width="64" height="64" rx="14" fill="#0E7A55"/>' +
-  '<g transform="translate(12.15 12.15) scale(.62)">' +
-  '<rect x="9" y="9" width="32" height="40" rx="5" fill="#fff" opacity=".62"/>' +
-  '<rect x="19" y="15" width="32" height="40" rx="5" fill="#fff"/>' +
-  '<path fill="none" stroke="#0E7A55" stroke-width="6.5" stroke-linecap="round" ' +
-  'stroke-linejoin="round" d="M26 35.5l6 6 12-12.5"/></g></svg>';
+const SVG = readFileSync(resolve(root, "public/logo.svg"), "utf8");
 
 /* --------------------------------------------------------------- PNG-Kodierung */
 

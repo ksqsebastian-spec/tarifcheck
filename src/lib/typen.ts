@@ -3,6 +3,9 @@ import type { SyncEntrypoint } from "../index";
 
 export interface Env {
   DB: D1Database;
+  TARIF_UPDATE: Workflow;
+  SCHEDULE_LABEL?: string;
+  SCHEDULE_HOURS?: string;
   R2: R2Bucket;
   AI: Ai;
   ASSETS: Fetcher;
