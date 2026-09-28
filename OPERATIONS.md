@@ -28,4 +28,4 @@ Before deployment: `npm ci`, `npm run typecheck`, `npm test`, `npx wrangler depl
 
 ## Visual references
 
-Original T/check logo and archive illustration; warm white inspired by Pantone 2026 Cloud Dancer, with original black/lime/lilac accents. UI references: [Gumroad](https://mobbin.com/screens/9070a353-e9c5-4d2a-8ba0-9467d6203938), [Figma Shortcut](https://mobbin.com/sites/sections/d89d3841-aea4-4bc6-a310-075eb53e19db). Motion respects reduced-motion preferences. No third-party tracking or remote font dependency was added.
+Original geometric folded-T logo with a white workspace, neutral typography and compact status panels. Logo studies are in `brand/`; the folded-T direction is applied. References: [Mobbin](https://mobbin.com/), [DocuWare brand material](https://start.docuware.com/de/bildmaterial), and the compact [Coda wordmark reference](https://mobbin.com/sites/sections/5267d6c6-eeca-4050-bbae-119af1bb9106). The marks are original, not copied brand assets. Motion respects reduced-motion preferences. No third-party tracking or remote font dependency was added.
