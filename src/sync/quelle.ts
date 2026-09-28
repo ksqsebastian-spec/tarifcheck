@@ -1,3 +1,4 @@
+import { sicherAbrufen, istPdf } from "../lib/sicherheit";
 import {
   dokumentZuQuelle,
   letzteVersion,
@@ -26,7 +27,7 @@ import { pdfNachText, textAusbeute, textBrauchbar } from "./text";
  */
 const KOPFZEILEN = {
   "user-agent":
-    "Tarifcheck/1.0 (Gruppenwerk Tarifvertrags-Monitoring; +https://github.com/ksqsebastian-spec/tarifcheck)",
+    "Tarifcheck/2.0 (Gruppenwerk Tarifvertrags-Monitoring; +https://github.com/ksqsebastian-spec/tarifcheck)",
   accept: "*/*",
 };
 
@@ -62,7 +63,7 @@ async function holenMitZweitversuch(
   url: string,
   kopfzeilen: Record<string, string>,
 ): Promise<Response> {
-  const versuch = () => fetch(url, { headers: kopfzeilen, redirect: "follow" });
+  const versuch = () => sicherAbrufen(url, kopfzeilen);
 
   let antwort: Response | null = null;
   let abbruch: unknown = null;
@@ -73,6 +74,7 @@ async function holenMitZweitversuch(
     abbruch = e;
   }
 
+  await antwort?.body?.cancel();
   await new Promise((r) => setTimeout(r, 3000));
   try {
     return await versuch();
@@ -228,7 +230,7 @@ function rat(fehler: string): string {
   if (code >= 500 || code === 0)
     return (
       "Die Quelle war vorübergehend nicht erreichbar — ein zweiter Versuch ist " +
-      "bereits gescheitert. Der nächste tägliche Lauf versucht es erneut; meist " +
+      "bereits gescheitert. Die nächste Prüfung versucht es erneut; meist " +
       "erledigt sich das von selbst. Der bisherige Inhalt bleibt unverändert " +
       "verfügbar, kann aber veralten."
     );
@@ -249,6 +251,11 @@ export async function quelleAbrufen(env: Env, quelleId: string): Promise<SyncErg
   const dokument = await dokumentZuQuelle(env, quelleId);
   if (!dokument) throw new Error(`Zu ${quelleId} fehlt das Dokument`);
 
+  const inhaber = crypto.randomUUID();
+  const lock = await env.DB.prepare(`INSERT INTO sync_sperren (quelle_id, inhaber, bis) VALUES (?, ?, ?)
+    ON CONFLICT(quelle_id) DO UPDATE SET inhaber = excluded.inhaber, bis = excluded.bis
+    WHERE sync_sperren.bis < ?`).bind(quelleId, inhaber, Date.now() + 300_000, Date.now()).run();
+  if (!lock.meta.changes) return { dokument_id: dokument.id, status: 'fehler', meldung: 'Diese Quelle wird bereits geprüft.' };
   try {
     return quelle.typ === "watch"
       ? await seiteBeobachten(env, quelle, dokument)
@@ -256,7 +263,7 @@ export async function quelleAbrufen(env: Env, quelleId: string): Promise<SyncErg
   } catch (e) {
     const text = e instanceof Error ? e.message : String(e);
     await pruefungVermerken(env, dokument.id, "fehler", text);
-    await meldungAnlegen(env, {
+    if (dokument.letzter_status !== "fehler" || dokument.letzter_fehler !== text) await meldungAnlegen(env, {
       art: "fehler",
       gewerk: dokument.gewerk,
       dokumentId: dokument.id,
@@ -264,6 +271,8 @@ export async function quelleAbrufen(env: Env, quelleId: string): Promise<SyncErg
       beschreibung: `${text}\n\nQuelle: ${quelle.url}\n\n${rat(text)}`,
     });
     return { dokument_id: dokument.id, status: "fehler", meldung: text };
+  } finally {
+    await env.DB.prepare('DELETE FROM sync_sperren WHERE quelle_id = ? AND inhaber = ?').bind(quelleId, inhaber).run();
   }
 }
 
@@ -275,10 +284,10 @@ async function dateiHolen(
 ): Promise<SyncErgebnis> {
   const vorher = await letzteVersion(env, dokument.id);
 
-  const antwort = await holenMitZweitversuch(quelle.url, bedingt(vorher));
+  const antwort = await holenMitZweitversuch(quelle.url, bedingt(vorher?.quelle_url === quelle.url ? vorher : null));
 
   // Der Server sagt selbst, dass sich nichts geaendert hat. Billigster Fall.
-  if (antwort.status === 304) {
+  if (antwort.status === 304 && vorher) {
     await pruefungVermerken(env, dokument.id, "unveraendert");
     return { dokument_id: dokument.id, status: "unveraendert" };
   }
@@ -286,7 +295,7 @@ async function dateiHolen(
     throw new Error(`HTTP ${antwort.status} ${antwort.statusText}`);
   }
 
-  const zeit = stempel();
+  const zeit = `${stempel()}-${crypto.randomUUID().slice(0, 8)}`;
   const rawKey = rohSchluessel(
     dokument.gewerk,
     dokument.id,
@@ -297,6 +306,7 @@ async function dateiHolen(
   // Einmal in den Speicher holen und von dort aus weiterverwenden: fuer R2 und,
   // falls sich etwas geaendert hat, gleich fuer die Umwandlung.
   const roh = await bytesMitGrenze(antwort, quelle.url);
+  if (!istPdf(roh)) throw new Error("Die Quelle lieferte kein PDF. Der bisherige Vertrag bleibt erhalten.");
   const { etag, bytes } = await bytesSpeichern(
     env,
     rawKey,
@@ -439,7 +449,7 @@ async function seiteBeobachten(
     markdown = await nachMarkdown(env, "seite.html", html, { hostname: basis.hostname });
   }
 
-  const zeit = stempel();
+  const zeit = `${stempel()}-${crypto.randomUUID().slice(0, 8)}`;
   const mdKey = textSchluessel(dokument.gewerk, dokument.id, zeit);
   const { etag, bytes } = await textSpeichern(env, mdKey, markdown);
 

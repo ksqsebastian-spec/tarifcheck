@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS benutzer (
+ benutzername TEXT PRIMARY KEY COLLATE NOCASE,
+ name TEXT NOT NULL,
+ passwort_hash TEXT NOT NULL,
+ aktiv INTEGER NOT NULL DEFAULT 1 CHECK (aktiv IN (0,1)),
+ erstellt_am TEXT NOT NULL
+);

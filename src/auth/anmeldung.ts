@@ -188,3 +188,12 @@ export const bremseLoesen = (env: Env, kennung: string): Promise<void> =>
 /** Wer klopft. Hinter Cloudflare ist CF-Connecting-IP die verlaessliche Angabe. */
 export const herkunft = (request: Request): string =>
   request.headers.get("cf-connecting-ip") ?? "unbekannt";
+
+/** Named accounts share the existing session and rate-limit protections. */
+export async function benutzerPruefen(env: Env, name: unknown, passwort: unknown): Promise<boolean> {
+  if (typeof name !== 'string' || typeof passwort !== 'string' || !name || !passwort || name.length > 100 || passwort.length > 1024) return false;
+  const account = await env.DB.prepare('SELECT passwort_hash, aktiv FROM benutzer WHERE benutzername = ?')
+    .bind(name).first<{ passwort_hash: string; aktiv: number }>();
+  if (account) return account.aktiv === 1 && await passwortStimmt(passwort, account.passwort_hash);
+  return name === env.LOGIN_BENUTZER && Boolean(env.LOGIN_HASH) && await passwortStimmt(passwort, env.LOGIN_HASH!);
+}

@@ -3,11 +3,14 @@ import type { SyncEntrypoint } from "../index";
 
 export interface Env {
   DB: D1Database;
+  TARIF_UPDATE: Workflow;
+  SCHEDULE_LABEL?: string;
+  SCHEDULE_HOURS?: string;
   R2: R2Bucket;
   AI: Ai;
   ASSETS: Fetcher;
   /**
-   * Selbstbindung als RPC. Der Cron ruft sie pro Quelle einmal auf.
+   * Selbstbindung als RPC. Der Workflow ruft sie pro Quelle einmal auf.
    *
    * Bewusst RPC und nicht HTTP: ein interner HTTP-Pfad waere von aussen
    * erreichbar und muesste ueber eine geheime Kopfzeile geschuetzt werden -

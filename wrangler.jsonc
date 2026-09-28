@@ -5,10 +5,13 @@
   "compatibility_date": "2026-08-06",
   "compatibility_flags": ["nodejs_compat"],
 
-  // Taeglich 06:15 UTC. Cron-Ausdruecke laufen immer in UTC.
+  // ChatGPT Cloud owns the monthly schedule; this Worker has no timer.
   "triggers": {
-    "crons": ["15 6 * * *"]
+    "crons": []
   },
+
+  "workflows": [{ "name": "tarifcheck-update", "binding": "TARIF_UPDATE", "class_name": "TarifUpdate" }],
+  "vars": { "SCHEDULE_LABEL": "Monatlich · am 1. um 09:00 Uhr · ChatGPT Cloud", "SCHEDULE_HOURS": "840" },
 
   "assets": {
     "directory": "./public",
@@ -66,7 +69,7 @@
     }
   ],
 
-  // Selbstbindung: der Cron ruft sich hierueber einmal pro Quelle auf.
+  // Selbstbindung: der Workflow ruft sich hierueber einmal pro Quelle auf.
   // Als RPC-Einstieg, damit der Weg ueber HTTP gar nicht erst existiert.
   "services": [
     {

@@ -1,3 +1,4 @@
+import { sichereQuellenUrl, istPdf } from "../lib/sicherheit";
 import { fehler, json } from "../lib/antwort";
 import {
   anmeldungErlaubt,
@@ -5,7 +6,7 @@ import {
   fehlversuchZaehlen,
   herkunft,
   loescheKeks,
-  passwortStimmt,
+  benutzerPruefen,
   pflegeschluesselStimmt,
   setzeKeks,
   sitzungAusstellen,
@@ -14,9 +15,7 @@ import {
 import { meldungAnlegen, volltextSetzen } from "../lib/db";
 import { rohSchluessel, textSchluessel, textSpeichern } from "../lib/speicher";
 import type { Env } from "../lib/typen";
-import { alleQuellenAnstossen } from "../sync/cron";
 import { datumsFunde } from "../sync/datum";
-import { nachMarkdown } from "../sync/markdown";
 import { pdfNachText, textAusbeute, textBrauchbar } from "../sync/text";
 import { jetzt, stempel } from "../lib/zeit";
 
@@ -36,16 +35,13 @@ async function anmelden(env: Env, request: Request): Promise<Response> {
   if (!(await anmeldungErlaubt(env, ip)))
     return fehler("Zu viele Fehlversuche. Bitte in 15 Minuten erneut.", 429);
 
-  if (!env.LOGIN_BENUTZER || !env.LOGIN_HASH || !env.SITZUNGS_SCHLUESSEL)
+  if (!env.SITZUNGS_SCHLUESSEL)
     return fehler("Die Anmeldung ist auf diesem Server noch nicht eingerichtet.", 503);
 
   const koerper = await request
     .json<{ benutzer?: string; passwort?: string }>()
     .catch(() => ({}) as { benutzer?: string; passwort?: string });
-  const stimmt =
-    koerper.benutzer === env.LOGIN_BENUTZER &&
-    Boolean(koerper.passwort) &&
-    (await passwortStimmt(koerper.passwort!, env.LOGIN_HASH));
+  const stimmt = await benutzerPruefen(env, koerper.benutzer, koerper.passwort);
 
   // Keine Unterscheidung zwischen falschem Namen und falschem Passwort -
   // sonst verraet die Meldung, welcher Teil schon stimmt.
@@ -104,9 +100,11 @@ async function uebersicht(env: Env): Promise<Response> {
             SUM(CASE WHEN d.aktuelle_version_id IS NULL
                        OR COALESCE(v.text_brauchbar, 1) = 0
                      THEN 1 ELSE 0 END)                                  AS ohne_inhalt,
-            MAX(d.letzte_pruefung)                                       AS letzte_pruefung
+            MIN(CASE WHEN q.aktiv = 1 THEN COALESCE(d.letzte_pruefung, '') END) AS letzte_pruefung,
+            SUM(CASE WHEN q.typ = 'watch' THEN 1 ELSE 0 END) AS beobachtete_seiten
        FROM dokumente d
        LEFT JOIN versionen v ON v.id = d.aktuelle_version_id
+       LEFT JOIN quellen q ON q.id = d.quelle_id
       GROUP BY d.gewerk
       ORDER BY d.gewerk`,
   ).all();
@@ -134,6 +132,8 @@ async function uebersicht(env: Env): Promise<Response> {
             : "aktuell",
     })),
     ungelesen: ungelesen?.anzahl ?? 0,
+    zeitplan: env.SCHEDULE_LABEL ?? 'Automatische Prüfung',
+    letzter_lauf: await env.DB.prepare('SELECT id, gestartet_am, beendet_am, status FROM sync_laeufe ORDER BY gestartet_am DESC LIMIT 1').first(),
   });
 }
 
@@ -141,7 +141,7 @@ async function dokumente(env: Env, url: URL): Promise<Response> {
   const gewerk = url.searchParams.get("gewerk");
   const abfrage = `
     SELECT d.*, q.url AS quelle_url, q.typ AS quelle_typ, v.erfasst_am AS stand,
-           v.bytes AS stand_bytes, v.text_zeichen, v.text_brauchbar, v.datum_funde
+           v.bytes AS stand_bytes, v.r2_raw_key IS NOT NULL AS hat_datei, v.text_zeichen, v.text_brauchbar, v.datum_funde
       FROM dokumente d
       LEFT JOIN quellen  q ON q.id = d.quelle_id
       LEFT JOIN versionen v ON v.id = d.aktuelle_version_id
@@ -177,7 +177,8 @@ async function dokumentDetail(env: Env, id: string): Promise<Response> {
 
 async function meldungen(env: Env, url: URL): Promise<Response> {
   const nurUngelesen = url.searchParams.get("ungelesen") === "1";
-  const grenze = Math.min(Number(url.searchParams.get("limit") ?? 100), 300);
+  const limit = Number(url.searchParams.get("limit") ?? 100);
+  const grenze = Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 300)) : 100;
 
   const { results } = await env.DB.prepare(
     `SELECT m.*, d.titel AS dokument_titel
@@ -199,6 +200,7 @@ async function meldungenGelesen(env: Env, request: Request): Promise<Response> {
     await env.DB.prepare("UPDATE meldungen SET gelesen = 1 WHERE gelesen = 0").run();
     return json({ ok: true });
   }
+  if (!Array.isArray(koerper.ids) || koerper.ids.length > 100 || koerper.ids.some(id => !Number.isSafeInteger(id))) return fehler("Ungültige Meldungs-IDs");
   if (!koerper.ids?.length) return fehler("Weder ids noch alle angegeben");
 
   const platzhalter = koerper.ids.map(() => "?").join(",");
@@ -238,17 +240,21 @@ async function hochladen(env: Env, request: Request): Promise<Response> {
       413,
     );
 
+  const rohBytes = await datei.arrayBuffer();
+  if (!istPdf(rohBytes)) return fehler('Bitte eine gültige PDF-Datei hochladen.', 415);
   const wer = (await sitzungPruefen(request, env)) ?? "unbekannt";
-  const zeit = stempel();
+  const zeit = `${stempel()}-${crypto.randomUUID().slice(0, 8)}`;
 
   let dokumentId = vorhandenesDokument;
   let neuAngelegt = false;
 
   if (dokumentId) {
-    const vorhanden = await env.DB.prepare("SELECT id FROM dokumente WHERE id = ?")
+    const vorhanden = await env.DB.prepare("SELECT id, gewerk, quelle_id FROM dokumente WHERE id = ?")
       .bind(dokumentId)
       .first();
     if (!vorhanden) return fehler("Dokument nicht gefunden", 404);
+    if (vorhanden.gewerk !== gewerk) return fehler('Gewerk stimmt nicht mit dem Dokument überein.');
+    if (vorhanden.quelle_id) return fehler('Bitte als eigenes Dokument hochladen. Automatische Quellen bleiben getrennt.');
   } else {
     // Kurzer Zufallsanteil, damit zwei gleich benannte Uploads sich nicht
     // gegenseitig ueberschreiben.
@@ -263,25 +269,17 @@ async function hochladen(env: Env, request: Request): Promise<Response> {
       .run();
   }
 
-  const rohBytes = await datei.arrayBuffer();
-  const endung = datei.name.split(".").pop()?.toLowerCase() ?? "pdf";
+  const endung = "pdf";
   const rawKey = rohSchluessel(gewerk, dokumentId, zeit, endung);
 
   const objekt = await env.R2.put(rawKey, rohBytes, {
-    httpMetadata: { contentType: datei.type || "application/octet-stream" },
+    httpMetadata: { contentType: "application/pdf" },
   });
   if (!objekt) return fehler("Datei konnte nicht gespeichert werden", 500);
 
-  const istPdf =
-    datei.type === "application/pdf" || datei.name.toLowerCase().endsWith(".pdf");
-
   let markdown: string;
   try {
-    // PDFs ueber pdf.js, alles andere (Word, HTML, Bilder) ueber die
-    // KI-Umwandlung - die kann Formate, die pdf.js nicht kennt.
-    markdown = istPdf
-      ? await pdfNachText(rohBytes, titel || datei.name)
-      : await nachMarkdown(env, datei.name, rohBytes);
+    markdown = await pdfNachText(rohBytes, titel || datei.name);
   } catch (e) {
     // Die Datei ist gespeichert, nur die Umwandlung ging schief. Aufraeumen
     // und ehrlich melden, statt eine halbe Version stehen zu lassen.
@@ -407,9 +405,9 @@ async function quelleAendern(env: Env, id: string, request: Request): Promise<Re
   if (koerper.url !== undefined) {
     let adresse: URL;
     try {
-      adresse = new URL(koerper.url);
+      adresse = sichereQuellenUrl(koerper.url);
     } catch {
-      return fehler("Das ist keine gültige Adresse");
+      return fehler("Nur HTTPS-Adressen der freigegebenen Herausgeber sind erlaubt.");
     }
     // new URL() nimmt auch ftp: und http: an. Ein Tarifvertrag, den jemand
     // unterwegs veraendern kann, ist keiner - und die Datenbank weist es
@@ -434,15 +432,6 @@ async function quelleAendern(env: Env, id: string, request: Request): Promise<Re
 
   if (!ergebnis.meta.changes) return fehler("Quelle nicht gefunden", 404);
 
-  // Nach einer Korrektur soll der Fehler nicht rot stehen bleiben, bis der
-  // naechste Cron laeuft.
-  if (koerper.url !== undefined) {
-    await env.DB.prepare(
-      "UPDATE dokumente SET letzter_fehler = NULL WHERE quelle_id = ? AND letzter_status = 'fehler'",
-    )
-      .bind(id)
-      .run();
-  }
   return json({ ok: true });
 }
 
@@ -453,6 +442,32 @@ export async function apiRouten(
 ): Promise<Response | null> {
   const p = url.pathname;
   const m = request.method;
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(m)) {
+    const origin = request.headers.get('origin');
+    if ((origin && origin !== url.origin) || request.headers.get('sec-fetch-site') === 'cross-site')
+      return fehler('Diese Anfrage stammt von einer anderen Website.', 403);
+    const size = Number(request.headers.get('content-length') || 0);
+    if (size > (p === '/api/upload' ? MAX_UPLOAD + 65536 : 65536)) return fehler('Anfrage zu groß', 413);
+  }
+  if (p === '/api/laeufe' && m === 'GET') {
+    const { results } = await env.DB.prepare('SELECT * FROM sync_laeufe ORDER BY gestartet_am DESC LIMIT 10').all();
+    return json({ laeufe: results });
+  }
+  if (p.startsWith('/api/download/') && m === 'GET') {
+    const id = decodeURIComponent(p.slice('/api/download/'.length));
+    const row = await env.DB.prepare(`SELECT v.r2_raw_key, v.hochgeladen_von FROM versionen v WHERE v.id = ?`).bind(id)
+      .first<{ r2_raw_key: string | null; hochgeladen_von: string | null }>();
+    if (!row?.r2_raw_key) return fehler('Keine Originaldatei vorhanden', 404);
+    if (row.hochgeladen_von && !(await sitzungPruefen(request, env))) return abgelehnt();
+    const file = await env.R2.get(row.r2_raw_key);
+    if (!file) return fehler('Datei nicht gefunden', 404);
+    const ext = row.r2_raw_key.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'bin';
+    return new Response(file.body, { headers: {
+      'content-type': ext === 'pdf' ? 'application/pdf' : 'application/octet-stream',
+      'content-disposition': `attachment; filename="tarif-${id.replace(/[^a-z0-9-]/gi, '')}.${ext}"`,
+      'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff',
+    }});
+  }
 
   if (p === "/api/uebersicht" && m === "GET") return uebersicht(env);
   if (p === "/api/dokumente" && m === "GET") return dokumente(env, url);
@@ -487,11 +502,11 @@ export async function apiRouten(
     }
 
     const stand = await env.DB.prepare(
-      `SELECT MAX(d.letzte_pruefung) AS zuletzt_geprueft,
+      `SELECT MIN(CASE WHEN q.aktiv = 1 THEN COALESCE(d.letzte_pruefung, '') END) AS zuletzt_geprueft,
               COUNT(*) AS dokumente,
               SUM(CASE WHEN v.text_brauchbar = 1 THEN 1 ELSE 0 END) AS durchsuchbar,
               SUM(CASE WHEN d.letzter_status = 'fehler' THEN 1 ELSE 0 END) AS fehler
-         FROM dokumente d LEFT JOIN versionen v ON v.id = d.aktuelle_version_id`,
+         FROM dokumente d LEFT JOIN versionen v ON v.id = d.aktuelle_version_id LEFT JOIN quellen q ON q.id = d.quelle_id`,
     ).first<Record<string, number | string | null>>();
 
     const zuletzt = stand?.zuletzt_geprueft as string | null;
@@ -499,31 +514,19 @@ export async function apiRouten(
       ? Math.round((Date.now() - new Date(zuletzt).getTime()) / 3600_000)
       : null;
 
-    // Selbsttest der Bremse: mit einem eigenen Schluessel oefter zaehlen, als
-    // erlaubt ist. Wer eine Schutzmassnahme nicht prueft, hat sie nicht.
-    // Der erste Anlauf ueber KV sah funktionsfaehig aus und war es nicht.
-    let bremse = "fehler";
-    try {
-      // Eigener Schluessel je Aufruf, damit der Selbsttest niemanden aussperrt.
-      const punkt = env.BREMSE.get(env.BREMSE.idFromName(`selbsttest:${crypto.randomUUID()}`));
-      let durchgelassen = 0;
-      for (let i = 0; i < 13; i++) {
-        if (await punkt.offen(10, 60_000)) durchgelassen++;
-        await punkt.fehlversuch(60_000);
-      }
-      bremse = durchgelassen === 10 ? "ok" : `WIRKUNGSLOS (${durchgelassen}/13 durchgelassen)`;
-    } catch (e) {
-      bremse = `fehler: ${e instanceof Error ? e.message : String(e)}`;
-    }
+    // A public health read must not create 26 storage writes per request.
+    const bremse = env.BREMSE ? 'konfiguriert' : 'fehlt';
 
     return json({
       selbstbindung,
       bremse,
-      cron: "15 6 * * * (UTC)",
+      version: '2.0.0',
+      zeitplan: env.SCHEDULE_LABEL,
+      workflow: 'tarifcheck-update',
       zuletzt_geprueft: zuletzt,
       stunden_seit_pruefung: stundenHer,
       // Nach 36 Stunden ohne Abruf ist ein taeglicher Lauf sicher ausgefallen.
-      lauf_ueberfaellig: stundenHer !== null && stundenHer > 36,
+      lauf_ueberfaellig: stundenHer === null || stundenHer > Number(env.SCHEDULE_HOURS ?? 192),
       ...stand,
     });
   }
@@ -532,8 +535,9 @@ export async function apiRouten(
     const wer = await sitzungPruefen(request, env);
     return json({
       angemeldet: wer,
+      name: wer ? (await env.DB.prepare('SELECT name FROM benutzer WHERE benutzername = ?').bind(wer).first<{name: string}>())?.name ?? wer : null,
       schreiben: Boolean(wer),
-      anmeldung_eingerichtet: Boolean(env.LOGIN_BENUTZER && env.LOGIN_HASH && env.SITZUNGS_SCHLUESSEL),
+      anmeldung_eingerichtet: Boolean(env.SITZUNGS_SCHLUESSEL),
     });
   }
 
@@ -565,9 +569,8 @@ export async function apiRouten(
     return quelleAendern(env, decodeURIComponent(p.slice("/api/quellen/".length)), request);
 
   if (p === "/api/sync" && m === "POST") {
-    const koerper = await request.json<{ quellen?: string[] }>().catch(() => ({}) as any);
-    const ergebnisse = await alleQuellenAnstossen(env, koerper.quellen);
-    return json({ ergebnisse });
+    const instance = await env.TARIF_UPDATE.create();
+    return json({ lauf_id: instance.id, status: 'laeuft' }, 202);
   }
 
   return null;

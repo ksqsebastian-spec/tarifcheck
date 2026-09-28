@@ -16,7 +16,7 @@ import {
   bremseLoesen,
   fehlversuchZaehlen,
   herkunft,
-  passwortStimmt,
+  benutzerPruefen,
   setzeKeks,
   sitzungAusstellen,
   sitzungPruefen,
@@ -129,10 +129,7 @@ async function bestaetigen(request: Request, env: OAuthEnv): Promise<Response> {
 
     const eingabe = String(form.get("benutzer") ?? "");
     const passwort = String(form.get("passwort") ?? "");
-    const stimmt =
-      eingabe === env.LOGIN_BENUTZER &&
-      Boolean(env.LOGIN_HASH) &&
-      (await passwortStimmt(passwort, env.LOGIN_HASH!));
+    const stimmt = await benutzerPruefen(env, eingabe, passwort);
 
     // Bewusst keine Unterscheidung zwischen falschem Namen und falschem
     // Passwort - sonst verraet die Meldung, welcher Teil schon stimmt.

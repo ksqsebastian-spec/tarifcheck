@@ -57,7 +57,7 @@ function marke(gewerk, klasse = "marke") {
     <svg viewBox="0 0 24 24" fill="${g.farbe}" aria-hidden="true">${g.glyph}</svg></span>`;
 }
 
-const ZUSTAND = { aktuell: "Aktuell", handlungsbedarf: "Handlungsbedarf", fehler: "Abruf fehlgeschlagen" };
+const ZUSTAND = { aktuell: "Quelle erreichbar", handlungsbedarf: "Handlungsbedarf", fehler: "Abruf fehlgeschlagen" };
 
 /* ── Kleinkram ──────────────────────────────────────────────────────────── */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -99,13 +99,7 @@ function melden(text, art = "") {
    anzubieten und beim Druck mit einem Fehler zu antworten. */
 let darf = { schreiben: false, anmeldung_eingerichtet: false, angemeldet: null };
 
-const gesperrtHinweis = () => darf.schreiben ? "" : `
-  <div class="notiz rise" style="margin-bottom:18px">
-    <b>Nur Lesezugriff.</b> ${darf.anmeldung_eingerichtet
-      ? `Zum Hochladen, Quellen ändern und Prüfen bitte oben rechts anmelden.`
-      : "Die Anmeldung ist auf diesem Server noch nicht eingerichtet — siehe SETUP.md."}
-    Der tägliche Abruf um 06:15 läuft davon unberührt weiter.
-  </div>`;
+const gesperrtHinweis = () => darf.schreiben ? "" : `<p class="readonly">Lesezugriff · Zum Prüfen, Hochladen und Bearbeiten bitte anmelden.</p>`;
 
 /* ── Ansichten ──────────────────────────────────────────────────────────── */
 let aktuell = "uebersicht";
@@ -136,7 +130,15 @@ async function uebersicht() {
   }
 
   inhalt.innerHTML = `
-    ${gesperrtHinweis()}
+    <div class="hero rise"><div><div class="eyebrow">Gruppenwerk / Tarifarchiv</div>
+      <h1>Tarifübersicht</h1>
+      <p>Tarifverträge, Quellen und archivierte Fassungen.</p></div>
+      <div class="hero-aside"><div class="schedule"><strong>Automatische Prüfung</strong>${esc(d.zeitplan)}
+      ${d.letzter_lauf ? `<div style="margin-top:8px">Letzter Lauf: ${datumZeit(d.letzter_lauf.gestartet_am)}<br>${d.letzter_lauf.status === 'laeuft' ? 'Prüfung läuft …' : d.letzter_lauf.status === 'ok' ? 'Abgeschlossen' : 'Mit Fehlern — Quellen prüfen'}</div>` : ''}</div></div>
+    </div>
+    <div class="metrics"><div class="metric"><b>${d.gewerke.reduce((n,g)=>n+g.dokumente,0)}</b><span>Dokumente & Quellen</span></div>
+      <div class="metric"><b>${d.gewerke.reduce((n,g)=>n+g.fehler,0)}</b><span>Abruffehler</span></div>
+      <div class="metric"><b>${d.gewerke.reduce((n,g)=>n+g.beobachtete_seiten,0)}</b><span>Beobachtete Webseiten</span></div></div>
     <div class="abschnitt rise"><h2>Stand je Gewerk</h2><span class="fuellung"></span>
       <span class="meta">${d.gewerke.reduce((n, g) => n + g.dokumente, 0)} Dokumente</span></div>
     <div class="gitter">
@@ -150,14 +152,14 @@ async function uebersicht() {
             <span class="ampel ${g.status}"></span>
             <span class="zustand ${g.status}">${ZUSTAND[g.status]}</span>
           </div>
-          <div class="gepruef">Geprüft ${datum(g.letzte_pruefung)}</div>
+          <div class="gepruef">Geprüft ${datum(g.letzte_pruefung)}${g.beobachtete_seiten ? `<br>${g.beobachtete_seiten} Seite(n) ohne Vertrags-PDF` : ""}</div><span class="arrow" aria-hidden="true">↗</span>
         </button>`).join("")}
     </div>
     <div class="notiz rise d6" style="margin-top:20px">
       Für <b>Tischler</b> und den <b>Lohn-TV Gerüstbau</b> gibt es keine öffentliche
       Volltextquelle — dort wird nur die Downloadseite überwacht. Meldet sie eine Änderung,
-      muss das Dokument einmal von Hand hochgeladen werden.
-    </div>`;
+      muss das Dokument einmal von Hand hochgeladen werden. „Quelle erreichbar“ bestätigt den Abruf, nicht die rechtliche Aktualität.
+    </div>${gesperrtHinweis()}`;
 
   inhalt.querySelectorAll(".gewerk").forEach((k) =>
     k.addEventListener("click", () => { filter = k.dataset.gewerk; zeige("dokumente"); }));
@@ -191,7 +193,7 @@ async function meldungen() {
       </div>`).join("")}`;
 
   $("#alle")?.addEventListener("click", () => gelesen({ alle: true }));
-  inhalt.querySelectorAll(".gelesen").forEach((b) =>
+  inhalt.querySelectorAll("button.gelesen").forEach((b) =>
     b.addEventListener("click", () => gelesen({ ids: [Number(b.dataset.id)] })));
 }
 
@@ -215,6 +217,7 @@ async function dokumente() {
       <span class="fuellung"></span>
       ${filter ? `<button id="alleG" class="knopf-rand">Alle Gewerke</button>` : ""}
     </div>
+    <div class="searchbar"><label style="flex:1">Dokument suchen<input id="dok-suche" type="search" class="feld" placeholder="Titel, Gewerk oder Kürzel …"></label><span id="treffer" class="meta">${d.dokumente.length} Einträge</span></div>
     <div class="karte rise d1" style="padding:4px 26px 6px">
       <div class="zeilen" style="border-top:0">
         ${d.dokumente.map((x) => zeileDokument(x)).join("") ||
@@ -222,12 +225,20 @@ async function dokumente() {
       </div>
     </div>
     <p class="meta rise d2" style="margin-top:14px">
-      Die Texte liegen für den MCP bereit, nicht zum Herunterladen. „Quelle" führt zum
-      Herausgeber. Die Datumsangaben stammen wörtlich aus den Dokumenten und sind
+      „PDF herunterladen“ öffnet die archivierte Originaldatei. „Quelle“ führt zum Herausgeber. Die Datumsangaben stammen wörtlich aus den Dokumenten und sind
       ungeprüft — mit „übernehmen" wird daraus eine gepflegte Angabe, die der MCP
       als verlässlich ausgibt.
     </p>`;
 
+  $("#dok-suche").addEventListener('input', (e) => {
+    const q = e.target.value.toLocaleLowerCase('de');
+    let count = 0;
+    inhalt.querySelectorAll('.dok').forEach((row) => {
+      row.hidden = !row.textContent.toLocaleLowerCase('de').includes(q);
+      if (!row.hidden) count++;
+    });
+    $('#treffer').textContent = `${count} Einträge`;
+  });
   $("#alleG")?.addEventListener("click", () => { filter = null; zeige("dokumente"); });
 
   const setzen = async (id, wert) => {
@@ -292,10 +303,12 @@ function zeileDokument(x) {
           ? `<span class="trenner">·</span><span class="fahne gruen">gültig ab ${datum(x.gueltig_ab)}</span>`
             + (darf.schreiben ? `<button class="loesen knopf-klein" data-id="${esc(x.id)}">entfernen</button>` : "")
           : ""}
+        ${x.hat_datei ? `<a class="download" href="/api/download/${encodeURIComponent(x.aktuelle_version_id)}">↓ PDF herunterladen</a>` : ''}
         ${x.quelle_url ? `<span class="trenner">·</span>
           <a href="${esc(x.quelle_url)}" target="_blank" rel="noopener"
              style="text-decoration:underline;text-underline-offset:2px">Quelle</a>` : ""}
       </div>
+      ${x.letzter_fehler ? `<div class="unter"><span class="zustand fehler">${esc(x.letzter_fehler)}</span></div>` : ''}
       ${x.gueltig_ab ? "" : datumZeile(x)}
       ${fahnen ? `<div class="unter" style="margin-top:7px">${fahnen}</div>` : ""}
     </div>
@@ -380,9 +393,9 @@ async function hochladen() {
         steht danach gleichwertig zur Verfügung.
       </p>
       <form id="up">
-        <label>Datei <span class="freiwillig">— höchstens 40 MB</span>
+        <label>PDF-Datei <span class="freiwillig">— höchstens 40 MB</span>
           <input class="feld" type="file" name="datei" required
-                 accept=".pdf,.docx,.doc,.html,.htm,.txt,.md,.png,.jpg,.jpeg"></label>
+                 accept="application/pdf,.pdf"></label>
         <label>Gewerk
           <select class="feld" name="gewerk" required>
             <option value="">— bitte wählen —</option>
@@ -437,7 +450,7 @@ function anmeldemaske(zurueck = "uebersicht") {
     <div class="abschnitt rise"><h2>Anmelden</h2></div>
     <div class="karte rise d1" style="max-width:440px">
       <p class="meta" style="margin-bottom:18px">
-        Ein gemeinsames Konto für alle, die Verträge hochladen oder Quellen pflegen.
+        Mit deinem persönlichen Konto kannst du Verträge hochladen und Quellen pflegen.
         Lesen geht auch ohne.
       </p>
       <form id="login">
@@ -477,7 +490,7 @@ function knoepfeSetzen() {
   $("#abmelden").hidden = !darf.schreiben;
   $("#anmelden").hidden = darf.schreiben || !darf.anmeldung_eingerichtet;
   const w = $("#wer");
-  w.textContent = darf.angemeldet ?? "";
+  w.textContent = darf.name ?? darf.angemeldet ?? "";
   w.hidden = !darf.angemeldet;
 }
 
@@ -510,12 +523,20 @@ $("#pruefen").addEventListener("click", async (e) => {
   k.textContent = "Läuft …";
   melden("Alle Quellen werden abgerufen. Das dauert einen Moment.");
   try {
-    const { ergebnisse } = await hole("/api/sync", { method: "POST" });
-    const neu = ergebnisse.filter((r) => r.status === "ok").length;
-    const kaputt = ergebnisse.filter((r) => r.status === "fehler").length;
-    melden(`${ergebnisse.length} Quellen geprüft — ${neu} mit Änderung, ${kaputt} fehlgeschlagen.`,
-      kaputt ? "schlecht" : "gut");
-    zeige(aktuell);
+    const { lauf_id } = await hole('/api/sync', { method: 'POST' });
+    melden('Prüfung gestartet. Sie läuft auch weiter, wenn du die Seite schließt.', 'gut');
+    zeige('uebersicht');
+    for (let i = 0; i < 80; i++) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const { laeufe } = await hole('/api/laeufe');
+      const lauf = laeufe.find(l => l.id === lauf_id);
+      if (lauf?.beendet_am) {
+        const result = JSON.parse(lauf.ergebnisse);
+        melden(`${result.quellen} Quellen geprüft — ${result.fehler} fehlgeschlagen.`, result.fehler ? 'schlecht' : 'gut');
+        zeige(aktuell);
+        break;
+      }
+    }
   } catch (err) { melden(err.message, "schlecht"); }
   finally { k.disabled = false; k.textContent = "Jetzt prüfen"; }
 });
