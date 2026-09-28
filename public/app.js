@@ -131,9 +131,9 @@ async function uebersicht() {
 
   inhalt.innerHTML = `
     <div class="hero rise"><div><div class="eyebrow">Gruppenwerk / Tarifarchiv</div>
-      <h1>Alles im Blick.<br>Jede Fassung bewahrt.</h1>
-      <p>Tarifquellen prüfen, Änderungen erkennen und die passende Fassung direkt herunterladen.</p></div>
-      <div class="hero-aside"><svg class="archive-art" viewBox="0 0 300 180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M35 145h235" stroke="currentColor" stroke-width="2"/><g class="art-paper"><path d="M82 23h116l28 28v94H82z" fill="#bcb1ef" stroke="currentColor" stroke-width="2"/><path d="M69 35h116l28 28v88H69z" fill="#f0eee9" stroke="currentColor" stroke-width="2"/><path d="M185 35v28h28M90 81h90M90 96h62M90 111h75" fill="none" stroke="currentColor" stroke-width="2"/></g><path d="M47 106h78l15 16h113v40H47z" fill="#dcfa65" stroke="currentColor" stroke-width="2"/><circle cx="231" cy="61" r="27" fill="#171715"/><path class="art-check" d="m218 60 9 9 17-19" fill="none" stroke="#dcfa65" stroke-width="5"/><path d="M44 40v20M34 50h20M267 105v12M261 111h12" stroke="currentColor" stroke-width="2"/></svg><div class="schedule"><strong>Automatische Prüfung</strong>${esc(d.zeitplan)}
+      <h1>Tarifübersicht</h1>
+      <p>Tarifverträge, Quellen und archivierte Fassungen.</p></div>
+      <div class="hero-aside"><div class="schedule"><strong>Automatische Prüfung</strong>${esc(d.zeitplan)}
       ${d.letzter_lauf ? `<div style="margin-top:8px">Letzter Lauf: ${datumZeit(d.letzter_lauf.gestartet_am)}<br>${d.letzter_lauf.status === 'laeuft' ? 'Prüfung läuft …' : d.letzter_lauf.status === 'ok' ? 'Abgeschlossen' : 'Mit Fehlern — Quellen prüfen'}</div>` : ''}</div></div>
     </div>
     <div class="metrics"><div class="metric"><b>${d.gewerke.reduce((n,g)=>n+g.dokumente,0)}</b><span>Dokumente & Quellen</span></div>
