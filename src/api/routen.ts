@@ -569,7 +569,6 @@ export async function apiRouten(
     return quelleAendern(env, decodeURIComponent(p.slice("/api/quellen/".length)), request);
 
   if (p === "/api/sync" && m === "POST") {
-    const koerper = await request.json<{ quellen?: string[] }>().catch(() => ({}) as any);
     const instance = await env.TARIF_UPDATE.create();
     return json({ lauf_id: instance.id, status: 'laeuft' }, 202);
   }

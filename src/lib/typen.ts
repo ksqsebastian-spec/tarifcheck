@@ -10,7 +10,7 @@ export interface Env {
   AI: Ai;
   ASSETS: Fetcher;
   /**
-   * Selbstbindung als RPC. Der Cron ruft sie pro Quelle einmal auf.
+   * Selbstbindung als RPC. Der Workflow ruft sie pro Quelle einmal auf.
    *
    * Bewusst RPC und nicht HTTP: ein interner HTTP-Pfad waere von aussen
    * erreichbar und muesste ueber eine geheime Kopfzeile geschuetzt werden -

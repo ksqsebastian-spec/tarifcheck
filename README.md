@@ -1,7 +1,6 @@
 # Tarifcheck
 
-**Läuft:** <https://tarifcheck.ksqsebastian.workers.dev> — Anmeldung noch einzurichten,
-siehe [`SETUP.md`](SETUP.md).
+**Läuft:** <https://tarifcheck.ksqsebastian.workers.dev> — aktueller Betrieb und monatliche ChatGPT-Prüfung: [`OPERATIONS.md`](OPERATIONS.md).
 
 Hält die Tarifverträge der Gruppenwerk-Gewerke automatisch aktuell, meldet Änderungen auf
 einer Seite und legt alles so ab, dass ein MCP-Server es für Claude auslesen kann.
@@ -17,9 +16,9 @@ Nachfolger von `tarif-sync.sh` — ohne Rechner, der durchlaufen muss.
 
 ## Kurz
 
-Ein Cloudflare Worker holt jeden Morgen die Tarifverträge von den amtlichen Quellen und
-den Sozialkassen, erkennt Änderungen, hebt jede Fassung auf und gewinnt mit pdf.js den
-Volltext. Alle siebzehn Verträge sind durchsuchbar.
+Eine monatliche ChatGPT-Cloud-Aufgabe prüft die Herausgeber und startet den Cloudflare-Workflow.
+Er lädt die Dateien, erkennt Änderungen, hebt jede Fassung auf und gewinnt mit pdf.js den
+Volltext. Überwacht werden 17 Quellen: 14 PDF-Quellen und drei Webseiten.
 Auf der Seite sieht man den Stand je Gewerk und bekommt Änderungen als Benachrichtigung.
 Dokumente ohne öffentliche Quelle lädt man dort von Hand hoch.
 

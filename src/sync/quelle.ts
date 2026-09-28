@@ -27,7 +27,7 @@ import { pdfNachText, textAusbeute, textBrauchbar } from "./text";
  */
 const KOPFZEILEN = {
   "user-agent":
-    "Tarifcheck/1.0 (Gruppenwerk Tarifvertrags-Monitoring; +https://github.com/ksqsebastian-spec/tarifcheck)",
+    "Tarifcheck/2.0 (Gruppenwerk Tarifvertrags-Monitoring; +https://github.com/ksqsebastian-spec/tarifcheck)",
   accept: "*/*",
 };
 

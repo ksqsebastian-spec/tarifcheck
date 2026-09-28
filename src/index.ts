@@ -6,11 +6,9 @@ import { oauthRouten } from "./auth/oauth";
 export { TarifUpdate } from "./sync/workflow";
 export { Bremse } from "./auth/bremse";
 import { fehler } from "./lib/antwort";
-import { meldungAnlegen } from "./lib/db";
 import { ICON_ICO, ICON_PNG_180, ICON_PNG_512, ICON_SVG } from "./lib/icons.generated";
 import type { Env } from "./lib/typen";
 import { mcpHandler, toolsJson } from "./mcp/server";
-import { alleQuellenAnstossen } from "./sync/cron";
 import { quelleAbrufen } from "./sync/quelle";
 
 /**
@@ -88,7 +86,7 @@ const seitenHandler = {
 } satisfies ExportedHandler<Env>;
 
 /**
- * Was die Selbstbindung dem Cron anbietet.
+ * Interner RPC-Einstieg für den Workflow.
  *
  * Als RPC-Methode und nicht als HTTP-Pfad: ein Endpunkt, der fremde Adressen
  * abruft und Rechenzeit verbraucht, hat im offenen Netz nichts zu suchen. Ein
@@ -100,14 +98,12 @@ export class SyncEntrypoint extends WorkerEntrypoint<Env> {
     return quelleAbrufen(this.env, quelleId);
   }
 
-  /**
-   * Antwortet, ohne etwas zu tun.
-   *
-   * Damit laesst sich pruefen, ob die Selbstbindung wirklich traegt - und
-   * nicht nur richtig konfiguriert aussieht. Ohne sie faende der taegliche
-   * Lauf keine Quelle mehr und wuerde stillschweigend nichts tun. Genau die
-   * Sorte Fehler, die man erst Wochen spaeter am veralteten Stand bemerkt.
-   */
+  /** Cleanup remains part of the on-demand workflow after removing cron. */
+  async oauthAufraeumen(): Promise<void> {
+    await provider.purgeExpiredData(this.env);
+  }
+
+  /** Live health probe for the internal service binding. */
   bereit(): string {
     return "ok";
   }
@@ -151,54 +147,4 @@ export default {
     return result;
   },
 
-  /**
-   * Taeglicher Abruf. Der Handler selbst macht fast nichts - er verteilt die
-   * Arbeit auf einen Aufruf je Quelle. Siehe sync/cron.ts.
-   */
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(
-      (async () => {
-        try {
-          const ergebnisse = await alleQuellenAnstossen(env);
-          const geaendert = ergebnisse.filter((e) => e.status === "ok").length;
-          const fehlgeschlagen = ergebnisse.filter((e) => e.status === "fehler").length;
-          console.log(
-            `Tarifcheck: ${ergebnisse.length} Quellen, ${geaendert} mit Änderung, ` +
-              `${fehlgeschlagen} fehlgeschlagen`,
-          );
-        } catch (e) {
-          // Scheitert der Lauf als Ganzes - Selbstbindung weg, Datenbank nicht
-          // erreichbar -, dann scheitert er fuer jede Quelle zugleich, und
-          // keine einzelne kann es vermerken. Ohne diese Meldung stuende auf
-          // der Seite weiter der Stand von gestern, ohne jeden Hinweis darauf,
-          // dass seither nichts mehr geprueft wurde.
-          const text = e instanceof Error ? e.message : String(e);
-          console.error("Täglicher Lauf komplett gescheitert", e);
-          try {
-            await meldungAnlegen(env, {
-              art: "fehler",
-              titel: "Täglicher Lauf komplett gescheitert",
-              beschreibung:
-                `Der Lauf ist abgebrochen, bevor auch nur eine Quelle geprüft ` +
-                `werden konnte: ${text}\n\n` +
-                `Solange das so bleibt, veraltet der gesamte Bestand still. ` +
-                `Unter "Übersicht" steht, wann zuletzt wirklich geprüft wurde; ` +
-                `/api/gesundheit meldet dasselbe als "lauf_ueberfaellig".`,
-            });
-          } catch {
-            // Wenn nicht einmal das geht, ist die Datenbank selbst weg. Dann
-            // bleibt nur das Log - und der ueberfaellige Stand auf der Seite.
-          }
-        }
-
-        // Abgelaufene Tokens und verwaiste Grants aus dem KV raeumen. Ohne das
-        // waechst die Namespace mit jeder Anmeldung, die nie benutzt wurde.
-        try {
-          await provider.purgeExpiredData(env);
-        } catch (e) {
-          console.error("Aufräumen der OAuth-Daten fehlgeschlagen", e);
-        }
-      })(),
-    );
-  },
 } satisfies ExportedHandler<Env>;

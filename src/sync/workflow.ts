@@ -31,6 +31,10 @@ export class TarifUpdate extends WorkflowEntrypoint<Env> {
       await this.env.DB.prepare('UPDATE sync_laeufe SET beendet_am = ?, status = ?, ergebnisse = ? WHERE id = ?')
         .bind(new Date().toISOString(), fehler ? 'teilfehler' : 'ok', JSON.stringify(result), event.instanceId).run();
     });
+    await step.do('OAuth aufräumen', async () => {
+      try { await this.env.SELF.oauthAufraeumen(); }
+      catch (error) { console.error('OAuth cleanup failed', error); }
+    });
     return result;
   }
 }
